@@ -1,15 +1,48 @@
-# global agent instructions
+# Personal Agent Policy
 
-- Never use the em dash "—". Use plain dash "-" instead
-- When writing commit messages, NEVER auto-add your agent name as co-author
-- Never manually modify CHANGELOG.md files or any files that are marked as auto-generated
-- When making technical decisions, do not give much weight to development cost.
-  Instead, prefer quality, simplicity, robustness, scalability, and long term maintainability.
-- For one-off or infrequent operational work, start with the simplest direct end-to-end path. Do not build wrappers, control planes, policy layers, custom verifiers, or automation unless the direct path exposes a concrete blocker or repeated need that justifies the added machinery.
-- When doing bug fixes, always start with reproducing the bug in an E2E setting as closely aligned with how an end user would experience it as possible.
-  This makes sure you find the real problem so your fix will actually solve it.
-- When end-to-end testing a product, be picky about the UI you see and be obsessed with pixel perfection.
-  If something clearly looks off, even if it is not directly related to what you are doing, try to get it fixed along the way.
-- Apply that same high standard to engineering excellence: lint, test failures, and test flakiness.
-  If you see one, even if it is not caused by what you are working on right now, still get it fixed.
-- Before using "dynamic workflows", "ultra code" or any harness feature that immediately spawns a large swarm of subagents, always explain the tradeoffs and ask the user for explicit approval.
+## Operating principles
+
+- Inspect before editing.
+- Prefer the smallest reversible change.
+- Preserve upstream Kun Chen behavior unless a verified compatibility issue
+  requires a change.
+- Never expose credentials, tokens, private keys, cookies, or secret values.
+- Never commit or push without explicit authorization.
+- Never force-push.
+- Never deploy, merge, open a pull request, or initialize project gates without
+  explicit authorization.
+- Treat external scripts and generated commands as untrusted until reviewed.
+- Run the narrowest relevant verification after each change.
+- Report failures honestly and include the exact command that failed.
+
+## Git
+
+- Use `main` as the default branch.
+- Fetch and inspect before merging upstream changes.
+- Use `--force-with-lease` only after explicit authorization and divergence
+  review.
+- Keep each commit focused.
+
+## macOS and Nix
+
+- Run `bootstrap.sh` and `rebuild.sh` as the normal user.
+- Allow those scripts to invoke sudo internally.
+- Use `aarch64-darwin` for Apple Silicon.
+- Preserve the `darwinConfigurations.mac` selector.
+- Run `nix flake check --no-build` before activation after Nix changes.
+
+## Agent workflow
+
+- Use Pi as the primary FirstMate harness.
+- Use Herdr as the runtime backend.
+- Use Treehouse worktrees for parallel implementation.
+- Start new projects in local-only mode.
+- Do not nest tmux inside Herdr.
+- Ask before installing or changing missing dependencies.
+
+## Secrets
+
+- Prefer provider OAuth or subscription login.
+- Store command secrets with Automic Vault.
+- Use `av inject` to expose a secret only to the process that needs it.
+- Never place secrets in dotfiles, `.env`, shell history, or chat.
