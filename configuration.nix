@@ -76,12 +76,15 @@
 
     brews = [
       "herdr"
+      "supabase"
+      "render"
     ];
 
     casks = [
       "wezterm"
       "claude-code"
       "google-chrome"
+      "codex"
       "kunchenguid/tap/baby-menu"
       "automic-vault/isotopes/automic-vault"
     ];
