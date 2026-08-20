@@ -1,293 +1,328 @@
-# rvzaku Dotfiles
+# My macOS Dotfiles
 
-My personal macOS dotfiles and agentic development environment, based on and continuously rebased onto [Kun Chen's dotfiles](https://github.com/kunchenguid/dotfiles).
+My personal macOS development setup, based on [Kun Chen's dotfiles](https://github.com/kunchenguid/dotfiles).
 
-This repository keeps Kun's setup as the upstream foundation while layering my own additions for:
+The idea is simple:
 
-- Determinate Nix
-- nix-darwin
-- Home Manager
-- Nix 26.05
-- declarative Homebrew
-- Automic Vault
-- hardened GitHub CLI
-- Starship
-- modern CLI tools
-- Neovim
-- WezTerm
-- Herdr
-- Pi
-- Claude / Codex agent configuration
-- reproducible macOS settings
-- secure local SSH authentication
+```text
+Kun's dotfiles
+      +
+my small custom layer
+      =
+my Mac setup
+```
 
-The goal is to keep the machine highly reproducible without losing the ability to continuously pull improvements from Kun's upstream repository.
+I keep Kun's repository as `upstream`, so I can continue receiving his improvements without losing my own changes.
 
 ---
 
-## Repository model
+## What manages what?
 
-This repository follows a fork + upstream workflow.
-
-```text
-kunchenguid/dotfiles
-        │
-        │ upstream
-        ▼
-  upstream/main
-        │
-        │ rebase
-        ▼
-my customization commits
-        │
-        ▼
-      main
-        │
-        │ origin
-        ▼
-   rvzaku/dotfiles
-```
-
-Expected remotes:
+Think of the setup as different people having different jobs.
 
 ```text
-origin   → git@github.com:rvzaku/dotfiles.git
-upstream → https://github.com/kunchenguid/dotfiles.git
+Determinate Nix
+└── installs and manages Nix itself
+
+nix-darwin
+├── macOS settings
+├── fonts
+├── sudo / Touch ID
+└── Homebrew declarations
+
+Home Manager
+├── terminal tools
+├── Zsh
+├── Starship
+├── Git
+├── Neovim
+└── CLI configuration
+
+Automic Vault
+├── secrets
+├── hardened gh
+├── security checks
+└── authorization gates
+
+Local files
+└── SSH keys and runtime-only credentials
 ```
 
-`origin` is my fork.
+The important rule is:
 
-`upstream` is Kun's original repository.
+> **One tool should have one owner.**
 
-I intentionally keep my customizations as commits on top of Kun's history rather than permanently diverging from the upstream project.
+For example, `gh` is owned by Automic Vault, so I do not also install `gh` with Nix.
 
 ---
 
-# Architecture
+# Versions
+
+This setup intentionally uses the **26.05** release family:
 
 ```text
-macOS
-│
-├── Determinate Nix
-│   └── owns the Nix installation + daemon
-│
-├── nix-darwin
-│   ├── macOS defaults
-│   ├── fonts
-│   ├── sudo / PAM
-│   ├── nix-homebrew
-│   └── declarative Homebrew
-│
-├── Home Manager
-│   ├── Zsh
-│   ├── Starship
-│   ├── Git
-│   ├── Neovim
-│   ├── Delta
-│   ├── FZF
-│   ├── Zoxide
-│   ├── Atuin
-│   ├── Eza
-│   ├── Bat
-│   ├── Yazi
-│   ├── Lazygit
-│   ├── nh
-│   ├── Topgrade
-│   └── CLI tools
-│
-├── Homebrew
-│   ├── Herdr
-│   ├── WezTerm
-│   ├── Claude Code
-│   ├── Pi Launcher
-│   ├── Google Chrome
-│   ├── Automic Vault
-│   └── Automic Vault gh isotope
-│
-├── Automic Vault
-│   ├── secrets
-│   ├── hardened credential-aware tools
-│   ├── authorization gates
-│   └── security auditing
-│
-└── local-only state
-    ├── SSH private keys
-    ├── SSH known_hosts
-    ├── runtime credentials
-    └── application state that must not enter Git/Nix
+Nixpkgs       26.05
+nix-darwin    26.05
+Home Manager  26.05
 ```
 
----
-
-# Nix version policy
-
-This setup intentionally tracks the **26.05** release family.
-
-The flake should use compatible versions of:
-
-```text
-Nixpkgs       → 26.05
-nix-darwin    → 26.05
-Home Manager  → release-26.05
-```
-
-My Home Manager compatibility version is also intentionally:
+`home.nix` also uses:
 
 ```nix
 home.stateVersion = "26.05";
 ```
 
-Do not casually mix different stable release families.
-
 ---
 
-# Determinate Nix
-
-Determinate Nix owns the Nix installation and daemon.
-
-Therefore:
-
-```nix
-nix.enable = false;
-```
-
-is intentional in `configuration.nix`.
-
-nix-darwin must not attempt to manage the Nix daemon at the same time as Determinate Nix.
-
----
-
-# nix-darwin responsibilities
-
-`configuration.nix` owns system-level macOS configuration.
-
-This includes:
-
-- Apple Silicon platform configuration
-- primary user
-- macOS defaults
-- fonts
-- Touch ID sudo configuration
-- nix-homebrew
-- declarative Homebrew packages/casks
-- Homebrew cleanup policy
-
-## macOS preferences
-
-Current preferences include:
-
-- Dark Mode
-- fast key repeat
-- short initial key repeat delay
-- auto-hidden menu bar
-- file extensions always visible
-- auto-hidden Dock
-- Finder list view
-- desktop icons/files hidden
-- tap-to-click
-
----
-
-# Fonts
-
-Hack Nerd Font is managed through nix-darwin:
-
-```nix
-fonts.packages = with pkgs; [
-  nerd-fonts.hack
-];
-```
-
-Do not duplicate the font in `home.packages`.
-
-nix-darwin registers it for macOS GUI applications under:
+# Important files
 
 ```text
-/Library/Fonts/Nix Fonts
+~/dotfiles/
+├── flake.nix
+├── flake.lock
+├── configuration.nix
+├── home.nix
+├── rebuild.sh
+├── README.md
+└── home/
+    ├── .config/
+    │   ├── wezterm/
+    │   ├── nvim/
+    │   └── herdr/
+    ├── .pi/
+    └── AGENTS.md
 ```
 
-WezTerm should use:
+### `configuration.nix`
 
-```lua
-config.font = wezterm.font("Hack Nerd Font")
-```
+Owns system-level things:
+
+- macOS preferences
+- Hack Nerd Font
+- Touch ID sudo
+- nix-homebrew
+- Homebrew formulae
+- Homebrew casks
+- Automic Vault packages
+
+### `home.nix`
+
+Owns my user environment:
+
+- Zsh
+- Starship
+- Git
+- Neovim
+- Delta
+- Lazygit
+- FZF
+- Zoxide
+- Atuin
+- Eza
+- Bat
+- Yazi
+- `nh`
+- Topgrade
+- normal CLI tools
 
 ---
 
-# Homebrew policy
+# Homebrew rule
 
-Homebrew is intentionally declarative.
-
-The important setting is:
+This is intentional:
 
 ```nix
 homebrew.onActivation.cleanup = "zap";
 ```
 
-## DO NOT change this to `none`
+Do **not** change it to `none`.
 
-`cleanup = "zap"` is intentional.
-
-It forces the good habit of declaring every persistent Homebrew formula, cask, and relevant tap in `configuration.nix`.
-
-Anything installed through Homebrew but not declared in Nix is expected to be removed during a rebuild.
-
-This keeps the machine reproducible.
-
-Typical declared Homebrew software includes:
+ELI5:
 
 ```text
-herdr
-wezterm
-claude-code
-kunchenguid/tap/pi-launcher
-automic-vault/isotopes
-automic-vault/isotopes/gh-cli
-automic-vault
-google-chrome
+Declared in configuration.nix?
+        │
+    ┌───┴───┐
+   yes      no
+    │        │
+   keep    remove
 ```
 
-If Automic Vault introduces another persistent Homebrew isotope that I want to keep, I must declare it in `configuration.nix`.
+So if I want a Homebrew app permanently, I must declare it.
 
-Do not solve that by weakening cleanup.
+Example GUI app:
+
+```nix
+casks = [
+  "wezterm"
+  "google-chrome"
+  "raycast"
+];
+```
+
+Example Brew-only CLI:
+
+```nix
+brews = [
+  "herdr"
+];
+```
+
+Then:
+
+```bash
+./rebuild.sh
+```
+
+---
+
+# Installing new software
+
+Use this rule:
+
+| I want to install... | Put it here |
+|---|---|
+| Normal permanent CLI | `home.nix` |
+| CLI with Home Manager module | `programs.<tool>` |
+| macOS GUI app | `configuration.nix` casks |
+| Brew-only CLI | `configuration.nix` brews |
+| AV-supported secure CLI | Automic Vault isotope + Brew declaration |
+| Project dependency | project itself |
+| Temporary command | `nix shell` / `nix run` / `comma` |
+| Secret | Automic Vault |
+
+## Example: permanent CLI
+
+Instead of:
+
+```bash
+brew install wget
+```
+
+prefer:
+
+```nix
+home.packages = with pkgs; [
+  wget
+];
+```
+
+Then:
+
+```bash
+./rebuild.sh
+```
+
+## Example: temporary tool
+
+No dotfile change needed:
+
+```bash
+nix shell nixpkgs#ffmpeg
+```
+
+or:
+
+```bash
+nix run nixpkgs#cowsay -- hello
+```
+
+---
+
+# Project dependencies
+
+Project dependencies stay with the project.
+
+This is normal:
+
+```bash
+bun add expo
+npm install react
+cargo add serde
+```
+
+They belong in things like:
+
+```text
+package.json
+bun.lock
+pyproject.toml
+Cargo.toml
+```
+
+They do **not** belong in my dotfiles just because one project uses them.
+
+Avoid unmanaged global installations such as:
+
+```bash
+npm install -g ...
+bun add -g ...
+pip install --user ...
+```
+
+for permanent tools when Nix can own them instead.
+
+---
+
+# Cloning repositories
+
+Cloning a repo does not require changing my dotfiles.
+
+Use:
+
+```bash
+mkdir -p ~/Projects
+cd ~/Projects
+
+git clone git@github.com:OWNER/REPO.git
+```
+
+Recommended layout:
+
+```text
+~
+├── dotfiles/
+├── Projects/
+│   ├── project-a/
+│   ├── project-b/
+│   └── experiments/
+├── firstmate/
+└── .ssh/
+```
+
+`~/dotfiles` describes my machine.
+
+`~/Projects` contains things I build.
 
 ---
 
 # Automic Vault
 
-Automic Vault is the security owner for secrets and supported hardened credential-aware tools.
+Automic Vault owns secrets and supported hardened tools.
 
-Repository:
-
-https://github.com/automic-vault/automic-vault
-
-## Principles
-
-Never store actual secret values in:
+Never put real secrets in:
 
 ```text
-configuration.nix
 home.nix
+configuration.nix
 flake.nix
 .zshrc
-AGENTS.md
+README.md
 Git
-.env committed to Git
 ```
 
 Avoid:
 
 ```bash
-export GH_TOKEN=...
-export OPENAI_API_KEY=...
-export ANTHROPIC_API_KEY=...
+export GH_TOKEN="..."
+export OPENAI_API_KEY="..."
 ```
 
-for long-lived shell sessions.
+for long-lived shells.
 
-Prefer Automic Vault's protected secret storage and targeted injection.
+Instead use AV.
 
-Examples:
+Useful commands:
 
 ```bash
 av scan --show-all
@@ -299,7 +334,7 @@ av inject +SECRET_NAME -- command
 
 # Hardened GitHub CLI
 
-The normal Nix/Home Manager `gh` package is intentionally **not installed**.
+Normal `gh` is intentionally **not** installed through Home Manager.
 
 Do not add:
 
@@ -307,23 +342,19 @@ Do not add:
 programs.gh.enable = true;
 ```
 
-and do not add:
+or:
 
 ```nix
 pkgs.gh
 ```
 
-to `home.packages`.
-
-The GitHub CLI is instead provided through Automic Vault's isotope:
+My `configuration.nix` declares Automic Vault's version:
 
 ```text
 automic-vault/isotopes/gh-cli
 ```
 
-This avoids Nix shadowing or replacing the hardened executable.
-
-Check which `gh` is active with:
+Check which one is active:
 
 ```bash
 command -v gh
@@ -332,13 +363,17 @@ gh --version
 
 ---
 
-# Automic Vault + Homebrew
+# Homebrew hardening
 
-Automic Vault can harden Homebrew.
+Automic Vault may additionally harden Homebrew:
 
-This is a security-hardening layer, not the source of package reproducibility.
+```bash
+av harden brew
+```
 
-Reproducibility continues to come from:
+This is a **security step**, not the thing that makes Homebrew reproducible.
+
+Reproducibility still comes from:
 
 ```text
 configuration.nix
@@ -346,30 +381,15 @@ configuration.nix
 cleanup = "zap"
 ```
 
-Automic Vault adds:
-
-- stronger ownership
-- execution gates
-- hardened tooling
-- authorization around sensitive operations
-
-If Homebrew hardening is desired:
-
-```bash
-av harden brew
-```
-
-Treat this as a machine bootstrap/security step rather than something to run automatically from nix-darwin activation.
-
-After hardening, a future `./rebuild.sh` may require Automic Vault authorization when Homebrew needs to install, upgrade, or remove software.
+After AV hardening, Homebrew operations may require authorization.
 
 That is expected.
 
 ---
 
-# SSH policy
+# SSH
 
-SSH is intentionally **not managed by Home Manager**.
+SSH is deliberately **not managed by Home Manager**.
 
 There should be no:
 
@@ -377,9 +397,7 @@ There should be no:
 programs.ssh = { ... };
 ```
 
-block in `home.nix`.
-
-Local SSH state belongs under:
+My SSH files stay local:
 
 ```text
 ~/.ssh/
@@ -389,11 +407,15 @@ Local SSH state belongs under:
 └── known_hosts
 ```
 
-The SSH private key must never enter Nix or Git.
+Never commit:
 
-The current Ed25519 key is passphrase-encrypted.
+```text
+id_ed25519
+```
 
-After configuring a fresh machine:
+My SSH private key is protected by a passphrase.
+
+Add it to Apple's Keychain:
 
 ```bash
 /usr/bin/ssh-add --apple-use-keychain ~/.ssh/id_ed25519
@@ -405,40 +427,32 @@ Test GitHub:
 ssh -T git@github.com
 ```
 
-Expected result:
+Expected:
 
 ```text
-Hi rvzaku! You've successfully authenticated, but GitHub does not provide shell access.
+Hi rvzaku! You've successfully authenticated...
 ```
-
-Changing an SSH key's passphrase does not require uploading a new public key to GitHub.
 
 ---
 
-# Sudo
+# sudo + Touch ID
 
-Touch ID sudo is managed declaratively through nix-darwin rather than through an imperative script.
+nix-darwin manages sudo Touch ID declaratively.
 
-The intended configuration includes:
+The important configuration is:
 
 ```nix
 security.pam.services.sudo_local = {
   enable = true;
   touchIdAuth = true;
 };
-```
 
-and:
-
-```nix
 security.sudo.extraConfig = ''
   Defaults timestamp_timeout=0
 '';
 ```
 
-This prevents sudo authentication from remaining cached for later commands.
-
-Test with:
+Test it:
 
 ```bash
 sudo -k
@@ -447,107 +461,9 @@ sudo true
 
 ---
 
-# Home Manager
-
-`home.nix` owns the user environment.
-
-It manages:
-
-- Zsh
-- Starship
-- Neovim package
-- Git
-- Delta
-- Lazygit
-- FZF
-- Zoxide
-- Atuin
-- Eza
-- Bat
-- Yazi
-- Tealdeer
-- nh
-- Topgrade
-- standalone CLI tools
-- authored config links
-
----
-
-# CLI stack
-
-Standalone CLI packages currently include tools such as:
-
-```text
-ripgrep
-fd
-jq
-jnv
-xh
-sd
-dust
-duf
-btop
-ouch
-hyperfine
-doggo
-nix-output-monitor
-comma
-nix-tree
-nvd
-topgrade
-```
-
-Programs with proper Home Manager modules are configured through `programs.*` instead of duplicated in `home.packages`.
-
-Examples:
-
-```text
-starship
-fzf
-zoxide
-atuin
-eza
-bat
-yazi
-neovim
-git
-delta
-lazygit
-tealdeer
-nh
-```
-
----
-
-# Eza
-
-Eza is the interactive replacement for common `ls` usage.
-
-Home Manager handles its Zsh integration.
-
-Do not create filesystem symlinks such as:
-
-```bash
-ln -s "$(which eza)" ~/.local/bin/ls
-```
-
-System commands should remain available for scripts.
-
-Typical interactive commands include:
-
-```text
-ls
-ll
-la
-lt
-lla
-```
-
----
-
 # Starship
 
-Starship is installed and initialized entirely through Home Manager.
+Starship is managed completely by Home Manager.
 
 Do not manually add:
 
@@ -555,233 +471,102 @@ Do not manually add:
 eval "$(starship init zsh)"
 ```
 
-to `.zshrc`.
-
-Home Manager owns the integration.
-
-The prompt currently focuses on:
-
-```text
-directory
-git branch
-git status
-command duration
-prompt character
-```
+Home Manager handles it.
 
 ---
 
 # Neovim
 
-The Neovim binary is managed by Home Manager.
-
-The actual editable Neovim configuration remains in the repository:
+Home Manager installs Neovim, but my actual config stays editable here:
 
 ```text
 ~/dotfiles/home/.config/nvim
 ```
 
-and:
+and is linked to:
 
 ```text
 ~/.config/nvim
 ```
 
-points to it.
-
-Because the whole Neovim config directory is an out-of-store symlink, Home Manager uses:
+This setting is important:
 
 ```nix
 sideloadInitLua = true;
 ```
 
-Do not remove that casually.
-
-Without it, Home Manager may attempt to create:
-
-```text
-~/.config/nvim/init.lua
-```
-
-inside the externally linked directory and fail with:
-
-```text
-Error installing file '.config/nvim/init.lua' outside $HOME
-```
-
----
-
-# Editable dotfile links
-
-Certain authored configuration directories intentionally use:
-
-```nix
-config.lib.file.mkOutOfStoreSymlink
-```
-
-This lets the real file remain inside:
-
-```text
-~/dotfiles
-```
-
-while applications see it in their normal configuration location.
-
-Currently this is used for things such as:
-
-```text
-~/.config/wezterm
-~/.config/nvim
-~/.config/herdr
-~/.claude/settings.json
-
-~/.pi/agent/themes
-~/.pi/agent/extensions
-~/.pi/agent/models.json
-~/.pi/agent/settings.json
-```
-
----
-
-# Agent instructions
-
-A common `AGENTS.md` is reused where appropriate.
-
-It is linked into locations such as:
-
-```text
-~/.claude/CLAUDE.md
-~/.codex/AGENTS.md
-~/.config/opencode/AGENTS.md
-```
-
-This lets agent instructions remain centralized.
-
----
-
-# Pi state policy
-
-Pi runtime credentials and machine-specific state should remain local.
-
-Only authored Pi configuration belongs in Git.
-
-Do not blindly link the entire:
-
-```text
-~/.pi
-```
-
-directory into the repository.
-
-Only explicitly selected authored paths should be managed.
+Do not remove it unless changing how Neovim config is managed.
 
 ---
 
 # Atuin
 
-Atuin is managed through Home Manager.
-
-Automic Vault currently reports Atuin's sync encryption key as plaintext:
+Automic Vault currently reports:
 
 ```text
 ~/.local/share/atuin/key
 ```
 
-This is currently expected because Automic Vault does not yet have a write-safe Atuin migration.
+because Atuin stores its sync encryption key locally.
 
-Do not manually delete or move the key just to silence `av scan`.
+AV does not yet have a safe migration for it.
 
-Wait for an officially supported integration.
+So:
 
----
-
-# PATH policy
-
-The shell deliberately prioritizes:
-
-```text
-1. system/root-managed Nix paths
-2. protected macOS paths
-3. Homebrew / Automic Vault paths
-4. remaining user paths
-```
-
-The intent is to reduce writable-directory-before-system-directory findings from Automic Vault while preserving Nix tool precedence.
-
-Useful debugging command:
-
-```bash
-print -l ${(s/:/)PATH}
-```
-
-Useful ownership checks:
-
-```bash
-type -a git
-type -a nvim
-type -a starship
-type -a gh
-type -a av
-```
+> **Do not delete or manually move the Atuin key just to make the warning disappear.**
 
 ---
 
 # Topgrade
 
-Topgrade is intentionally constrained.
+Topgrade must **not** independently manage Home Manager or Homebrew.
 
-It must **not independently manage Home Manager or Homebrew**, because those are already owned by nix-darwin.
+Those already belong to nix-darwin.
 
-The generated Topgrade config disables:
+The managed config disables:
 
-```text
-home_manager
-brew_formula
-brew_cask
+```toml
+[misc]
+disable = [
+  "home_manager",
+  "brew_formula",
+  "brew_cask",
+]
 ```
 
-The correct Git configuration field for the installed Topgrade version is:
+For Topgrade 17.5.1 the correct Git option is:
 
 ```toml
 [git]
 pull_predefined = false
 ```
 
-Do not change this to:
+Not:
 
 ```toml
 predefined_repos = false
 ```
 
-because Topgrade 17.5.1 does not recognize that field.
-
-Topgrade's custom Nix operation ultimately runs:
+The custom Nix update path is:
 
 ```bash
 nix flake update
 ./rebuild.sh
 ```
 
-so the update path remains declarative.
-
 ---
 
-# Rebuilding
+# Rebuilding the Mac
 
-The normal apply command is:
+After changing `configuration.nix`, `home.nix`, or the flake:
 
 ```bash
 cd ~/dotfiles
+nix flake check --no-build
 ./rebuild.sh
 ```
 
-Validate first when making significant changes:
-
-```bash
-nix flake check --no-build
-```
-
-After major shell changes:
+After shell changes:
 
 ```bash
 exec zsh
@@ -793,29 +578,25 @@ exec zsh
 nh darwin switch
 ```
 
-but `./rebuild.sh` remains the preferred compatibility path with the upstream repository.
+but `./rebuild.sh` remains my normal path.
 
 ---
 
-# Automic Vault audit
+# Git structure
 
-Run periodically:
+My fork:
 
-```bash
-av scan --show-all
+```text
+origin
+└── rvzaku/dotfiles
 ```
 
-Expected findings may include things that AV intentionally cannot migrate safely yet, such as Atuin.
+Kun's original repository:
 
-Do not blindly eliminate every warning with custom scripts.
-
-Understand ownership first.
-
----
-
-# Git workflow
-
-## Remotes
+```text
+upstream
+└── kunchenguid/dotfiles
+```
 
 Check:
 
@@ -823,112 +604,62 @@ Check:
 git remote -v
 ```
 
-Expected:
+Desired setup:
 
 ```text
-origin   git@github.com:rvzaku/dotfiles.git
-upstream https://github.com/kunchenguid/dotfiles.git
+origin    git@github.com:rvzaku/dotfiles.git
+upstream  https://github.com/kunchenguid/dotfiles.git
 ```
 
-Optional safety measure:
+Optional protection:
 
 ```bash
 git remote set-url --push upstream DISABLED
 ```
 
-This prevents accidentally pushing to Kun's repository.
+That prevents accidental pushes to Kun.
 
 ---
 
-# Getting updates from Kun
+# Getting Kun's updates
 
-Always start with a clean working tree:
+ELI5:
+
+```text
+Kun adds new changes
+       ↓
+I download them
+       ↓
+Git puts my changes back on top
+       ↓
+I test everything
+       ↓
+I push to my fork
+```
+
+Commands:
 
 ```bash
 cd ~/dotfiles
+
 git status
-```
-
-Fetch Kun's newest commits:
-
-```bash
 git fetch upstream
-```
 
-See what is new:
-
-```bash
 git log --oneline HEAD..upstream/main
-```
-
-Review differences:
-
-```bash
 git diff HEAD...upstream/main
-```
 
-Then replay my customizations on top:
-
-```bash
 git rebase upstream/main
 ```
 
-Git `rerere` is enabled so repeated conflict resolutions can be remembered.
-
----
-
-# Resolving upstream conflicts
-
-Check:
-
-```bash
-git status
-```
-
-Edit the conflicted file:
-
-```bash
-nvim home.nix
-```
-
-Resolve Git conflict markers, then:
-
-```bash
-git add <file>
-git rebase --continue
-```
-
-Repeat until complete.
-
-Abort safely with:
-
-```bash
-git rebase --abort
-```
-
----
-
-# Validate after rebasing
-
-After receiving Kun updates:
+Then test:
 
 ```bash
 nix flake check --no-build
-```
-
-then:
-
-```bash
 ./rebuild.sh
-```
-
-then:
-
-```bash
 av scan --show-all
 ```
 
-If everything is healthy:
+Then update my fork:
 
 ```bash
 git push --force-with-lease origin main
@@ -942,266 +673,178 @@ Use:
 
 after rebasing.
 
-Do not use plain:
+Do not normally use plain:
 
 ```text
 --force
 ```
 
-unless there is a very specific reason.
-
 ---
 
-# Normal upstream update routine
+# If rebase has conflicts
 
-The standard workflow is:
+Check:
 
 ```bash
-cd ~/dotfiles
-
 git status
-
-git fetch upstream
-git log --oneline HEAD..upstream/main
-git diff HEAD...upstream/main
-
-git rebase upstream/main
-
-nix flake check --no-build
-./rebuild.sh
-
-av scan --show-all
-
-git push --force-with-lease origin main
 ```
 
----
-
-# Adding new software
-
-Before installing something manually, decide who should own it.
-
-## Normal CLI tool
-
-Prefer:
-
-```nix
-home.packages = with pkgs; [
-  package-name
-];
-```
-
-or a native Home Manager `programs.*` module.
-
-## macOS GUI application
-
-Prefer declarative Homebrew casks in:
-
-```text
-configuration.nix
-```
-
-## Credential-bearing tool supported by Automic Vault
-
-Check whether Automic Vault provides an isotope/hardener.
-
-Avoid installing a conflicting Nix copy.
-
-If the AV tool is installed through Homebrew and must persist, declare that Homebrew package in `configuration.nix`.
-
-## Secret
-
-Store it in Automic Vault.
-
-Never commit it.
-
----
-
-# What should never enter Git
-
-Do not commit:
-
-```text
-SSH private keys
-API tokens
-GitHub tokens
-Claude credentials
-Codex credentials
-Pi runtime credentials
-Automic Vault data
-session tokens
-browser profiles
-machine-specific secret state
-```
-
-Before committing:
+Open the conflicting file:
 
 ```bash
+nvim home.nix
+```
+
+Resolve the conflict, then:
+
+```bash
+git add home.nix
+git rebase --continue
+```
+
+Repeat if needed.
+
+Cancel everything safely with:
+
+```bash
+git rebase --abort
+```
+
+Git `rerere` is enabled so repeated conflict resolutions can be remembered.
+
+---
+
+# Before committing
+
+Always check:
+
+```bash
+git status
 git diff
 git diff --cached
 ```
 
-Review carefully.
+Make sure no secret accidentally entered Git.
+
+Then:
+
+```bash
+git add .
+git commit -m "Describe the change"
+git push
+```
 
 ---
 
 # Useful health checks
 
-## Nix
+### Nix
 
 ```bash
 nix --version
 nix flake check --no-build
 ```
 
-## nix-darwin
-
-```bash
-./rebuild.sh
-```
-
-## Home Manager
-
-```bash
-command -v home-manager
-```
-
-## nh
-
-```bash
-nh --version
-```
-
-## Starship
+### Starship
 
 ```bash
 starship --version
 ```
 
-## SSH
+### nh
+
+```bash
+nh --version
+```
+
+### GitHub
 
 ```bash
 ssh -T git@github.com
+command -v gh
+gh --version
 ```
 
-## Automic Vault
+### Automic Vault
 
 ```bash
 av --version
 av scan --show-all
 ```
 
-## GitHub CLI
-
-```bash
-command -v gh
-gh --version
-```
-
-## Font
+### Font
 
 ```bash
 ls "/Library/Fonts/Nix Fonts" | grep -i hack
 ```
 
-## Homebrew
+### PATH
 
 ```bash
-brew list
-brew list --cask
-```
-
-## Git remotes
-
-```bash
-git remote -v
+print -l ${(s/:/)PATH}
 ```
 
 ---
 
-# Fresh Mac bootstrap checklist
+# Fresh Mac checklist
 
 - [ ] Install Xcode / Command Line Tools
 - [ ] Install Determinate Nix
+- [ ] Clone my dotfiles
 - [ ] Configure Git identity
 - [ ] Generate or restore SSH key
-- [ ] Encrypt SSH key with a passphrase
-- [ ] Add SSH key to macOS Keychain
-- [ ] Fork Kun's repository
-- [ ] Clone my fork into `~/dotfiles`
-- [ ] Configure `upstream` as `kunchenguid/dotfiles`
-- [ ] Verify 26.05 flake inputs
+- [ ] Protect SSH key with a passphrase
+- [ ] Add SSH key to Apple Keychain
+- [ ] Verify GitHub SSH
 - [ ] Run `nix flake check --no-build`
 - [ ] Run `./rebuild.sh`
-- [ ] Verify Hack Nerd Font
 - [ ] Verify Starship
-- [ ] Verify `nh`
-- [ ] Verify hardened `gh`
-- [ ] Open/configure Automic Vault
-- [ ] Restore/import secrets into Automic Vault
+- [ ] Verify Hack Nerd Font
+- [ ] Configure Automic Vault
+- [ ] Restore secrets into Automic Vault
 - [ ] Run `av scan --show-all`
 - [ ] Apply supported AV hardening
-- [ ] Verify SSH with GitHub
-- [ ] Verify Homebrew declarations
-- [ ] Verify `cleanup = "zap"` remains enabled
-- [ ] Verify Topgrade configuration
-- [ ] Test `topgrade`
-- [ ] Commit local customization changes
-- [ ] Push to my fork
+- [ ] Verify hardened `gh`
+- [ ] Verify Topgrade
+- [ ] Configure Kun as `upstream`
 
 ---
 
-# Important invariants
+# Rules I should remember
 
-If I revisit this repo months later, remember these rules:
-
-1. **Kun remains upstream.**
-2. **My customizations stay as commits on top of Kun.**
-3. **Use rebase to ingest Kun's updates.**
+1. **Kun is upstream; my fork is origin.**
+2. **My changes stay on top of Kun's changes.**
+3. **Use rebase to get Kun updates.**
 4. **Determinate owns Nix itself.**
-5. **nix-darwin owns system/macOS configuration.**
-6. **Home Manager owns normal user CLI configuration.**
-7. **Homebrew remains declarative.**
-8. **`cleanup = "zap"` is intentional and must remain enabled.**
-9. **Every persistent Homebrew dependency must be declared.**
-10. **Automic Vault owns secrets and supported hardened credential tools.**
-11. **Do not install normal Nix `gh` while using AV's `gh-cli` isotope.**
-12. **SSH private keys remain local and passphrase-protected.**
-13. **Home Manager must not own `~/.ssh/config`.**
-14. **Neovim needs `sideloadInitLua = true` because its config directory is externally linked.**
-15. **Topgrade must not independently update Home Manager or Brew.**
-16. **Use `pull_predefined = false` for Topgrade 17.5.1.**
-17. **Atuin's AV warning is currently expected; don't hack around it.**
-18. **Validate upstream changes before applying them.**
-19. **Never commit credentials.**
-20. **Use `git push --force-with-lease` after upstream rebases.**
+5. **nix-darwin owns macOS and Homebrew declarations.**
+6. **Home Manager owns normal CLI tools and shell config.**
+7. **Automic Vault owns secrets and supported hardened tools.**
+8. **`cleanup = "zap"` is intentional.**
+9. **Every permanent Homebrew package must be declared.**
+10. **Do not install another `gh` while using AV's hardened `gh`.**
+11. **SSH keys stay local, never in Git or Nix.**
+12. **Project dependencies stay inside projects.**
+13. **Normal repositories go in `~/Projects`, not `~/dotfiles`.**
+14. **Temporary tools use `nix shell`, `nix run`, or `comma`.**
+15. **Do not remove `sideloadInitLua` without understanding why it exists.**
+16. **Do not manually “fix” the current Atuin AV warning.**
+17. **Test after rebasing Kun before pushing.**
+18. **Never commit secrets.**
 
 ---
 
-# Credits
+## Credits
 
-This setup is based heavily on Kun Chen's excellent dotfiles and agentic development workflow:
+Based on [Kun Chen's dotfiles](https://github.com/kunchenguid/dotfiles).
 
-https://github.com/kunchenguid/dotfiles
+The goal of this fork is not to replace Kun's setup.
 
-My fork preserves Kun's work as the upstream foundation while adding my own macOS, Nix, security, Automic Vault, CLI, and agent configuration.
-
----
-
-# Personal reminder
-
-The purpose of this repository is **not to rewrite Kun's setup from scratch**.
-
-The intended model is:
+It is:
 
 ```text
-Kun's latest work
-        +
-small, explicit personal customization layer
-        =
-my machine
+Kun's latest setup
+       +
+my small personal layer
+       =
+a reproducible Mac I understand
 ```
-
-When possible, prefer adapting my customization layer to upstream rather than copying or permanently replacing large upstream sections.
-
-That keeps this repository maintainable, reproducible, and able to benefit from Kun's future improvements.
