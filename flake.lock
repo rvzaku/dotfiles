@@ -109,6 +109,22 @@
         "type": "github"
       }
     },
+    "no-mistakes": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787246032,
+        "narHash": "sha256-Mkq6o4PfmdU2IWOWOI+bUgj0f7jmei/63TokcBh/rz8=",
+        "owner": "kunchenguid",
+        "repo": "no-mistakes",
+        "rev": "abe6da6559c9a60ab5796ce2be6e6a42efd1dc56",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kunchenguid",
+        "repo": "no-mistakes",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "firstmate": "firstmate",
@@ -116,6 +132,7 @@
         "nix-darwin": "nix-darwin",
         "nix-homebrew": "nix-homebrew",
         "nixpkgs": "nixpkgs",
+        "no-mistakes": "no-mistakes",
         "treehouse": "treehouse"
       }
     },

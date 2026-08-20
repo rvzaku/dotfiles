@@ -1,10 +1,14 @@
 {
-  description = "rvzaku macOS dotfiles — based on kunchenguid/dotfiles";
+  description = "rvzaku macOS dotfiles — Kun Chen upstream + declarative FirstMate stack";
 
   inputs = {
-    # ───────────────────────────────────────────────────────────
-    # Stable 26.05 stack
-    # ───────────────────────────────────────────────────────────
+    # ────────────────────────────────────────────────────────────
+    # Core Nix stack
+    #
+    # Stay on the 26.05 release family, but move to the newest
+    # commit in those branches whenever `nix flake update` runs.
+    # flake.lock freezes the resolved commits.
+    # ────────────────────────────────────────────────────────────
 
     nixpkgs.url =
       "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
@@ -23,27 +27,23 @@
       "github:zhaofengli/nix-homebrew";
 
 
-    # ───────────────────────────────────────────────────────────
-    # FirstMate
+    # ────────────────────────────────────────────────────────────
+    # Kun ecosystem
     #
-    # FirstMate is a repository-as-distribution project rather
-    # than a normal Nix package.
-    #
-    # flake.lock pins the exact Git revision.
-    # ───────────────────────────────────────────────────────────
+    # These track upstream main.
+    # `nix flake update` resolves the newest commit.
+    # `flake.lock` makes that exact revision reproducible.
+    # ────────────────────────────────────────────────────────────
 
     firstmate = {
       url = "github:kunchenguid/firstmate";
       flake = false;
     };
 
-
-    # ───────────────────────────────────────────────────────────
-    # Treehouse
-    #
-    # Treehouse ships a native Nix flake.
-    # flake.lock pins the exact revision.
-    # ───────────────────────────────────────────────────────────
+    no-mistakes = {
+      url = "github:kunchenguid/no-mistakes";
+      flake = false;
+    };
 
     treehouse = {
       url = "github:kunchenguid/treehouse";
@@ -57,21 +57,32 @@
       self,
       nixpkgs,
       nix-darwin,
-      nix-homebrew,
       home-manager,
+      nix-homebrew,
       ...
     }:
 
     let
-      # The one machine username.
+      # ----------------------------------------------------------
+      # One identity point.
+      # ----------------------------------------------------------
+
       user = "rvzaku";
+
+      system = "aarch64-darwin";
+
     in
     {
-      darwinConfigurations.mac =
+      darwinConfigurations."mac" =
         nix-darwin.lib.darwinSystem {
-          # Make user + flake inputs visible to configuration.nix.
+          inherit system;
+
           specialArgs = {
-            inherit user inputs;
+            inherit
+              inputs
+              user
+              system
+              ;
           };
 
           modules = [
@@ -85,9 +96,12 @@
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
 
-              # Make the same inputs available to home.nix.
               home-manager.extraSpecialArgs = {
-                inherit user inputs;
+                inherit
+                  inputs
+                  user
+                  system
+                  ;
               };
 
               home-manager.users.${user} =

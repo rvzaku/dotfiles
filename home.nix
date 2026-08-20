@@ -3,36 +3,36 @@
   lib,
   pkgs,
   user,
+  system,
   inputs,
   ...
 }:
 
 let
-  # ─────────────────────────────────────────────────────────────
-  # Paths
-  # ─────────────────────────────────────────────────────────────
+  home =
+    config.home.homeDirectory;
 
-  home = config.home.homeDirectory;
-
-  dotfiles = "${home}/dotfiles";
-
-  npmGlobalPrefix =
-    "${home}/.local/share/npm-global";
+  dotfiles =
+    "${home}/dotfiles";
 
 
   # ─────────────────────────────────────────────────────────────
-  # FirstMate
+  # FirstMate paths
   #
-  # Code remains a real Git checkout because FirstMate itself
-  # treats the checkout as its distribution.
+  # IMPORTANT:
   #
-  # flake.lock owns the desired revision.
+  # FirstMate code:
+  #   ~/firstmate
+  #
+  # FirstMate private/mutable runtime state:
+  #   ~/.local/share/firstmate
+  #
+  # This follows FirstMate's FM_HOME model.
   # ─────────────────────────────────────────────────────────────
 
-  firstmateCheckout = "${home}/firstmate";
+  firstmateRoot =
+    "${home}/firstmate";
 
-  # Mutable/private fleet state is intentionally outside the
-  # FirstMate source checkout.
   firstmateHome =
     "${home}/.local/share/firstmate";
 
@@ -43,47 +43,24 @@ let
   # ─────────────────────────────────────────────────────────────
   # Treehouse
   #
-  # Pure Nix package supplied by Treehouse's own flake.
+  # Official upstream Nix flake.
   # ─────────────────────────────────────────────────────────────
 
-  treehousePackage =
-    inputs.treehouse.packages.${pkgs.stdenv.hostPlatform.system}.default;
-
-
-  # ─────────────────────────────────────────────────────────────
-  # no-mistakes
-  #
-  # Pin an exact official macOS release.
-  #
-  # Current stable release as of 2026-08-20: v1.53.0.
-  #
-  # The activation below verifies Kun's permanent Developer ID:
-  #
-  #   Identifier: com.kunchenguid.no-mistakes
-  #   Team ID:    9T2J7MNUP9
-  #
-  # before installing it.
-  # ─────────────────────────────────────────────────────────────
-
-  noMistakesVersion = "1.53.0";
+  treehouse =
+    inputs.treehouse.packages.${system}.default;
 
 
   # ─────────────────────────────────────────────────────────────
-  # FirstMate AXI versions
+  # npm AXI location
   #
-  # Exact top-level npm versions.
+  # These tools are currently published as npm CLIs and FirstMate
+  # explicitly requires their commands on PATH.
   #
-  # These are kept declarative so a fresh machine does not depend
-  # on remembering historical npm install commands.
+  # Their install/update state stays in one controlled location.
   # ─────────────────────────────────────────────────────────────
 
-  axiVersions = {
-    gh = "0.1.30";
-    chromeDevtools = "0.1.29";
-    lavish = "0.1.53";
-    tasks = "0.2.5";
-    quota = "0.1.29";
-  };
+  npmGlobalPrefix =
+    "${home}/.local/share/npm-global";
 
 
   # ─────────────────────────────────────────────────────────────
@@ -91,22 +68,101 @@ let
   # ─────────────────────────────────────────────────────────────
 
   firstmateLauncher =
-    pkgs.writeShellApplication {
-      name = "firstmate";
+    pkgs.writeShellScriptBin "firstmate" ''
+      set -euo pipefail
 
-      runtimeInputs = [
-        pkgs.git
-      ];
+      export FM_ROOT_OVERRIDE="${firstmateRoot}"
+      export FM_HOME="${firstmateHome}"
 
-      text = ''
-        export FM_HOME="${firstmateHome}"
-        export FM_ROOT_OVERRIDE="${firstmateCheckout}"
+      exec "${firstmateRoot}/bin/fm-session-start.sh" "$@"
+    '';
 
-        cd "${firstmateCheckout}"
 
-        exec "${firstmateCheckout}/bin/fm-session-start.sh" "$@"
-      '';
-    };
+  # ─────────────────────────────────────────────────────────────
+  # FirstMate ecosystem update helper
+  #
+  # This command deliberately advances upstream versions.
+  #
+  # Normal rebuilds DO NOT do this.
+  #
+  # Usage:
+  #   dotfiles-update
+  # ─────────────────────────────────────────────────────────────
+
+  dotfilesUpdate =
+    pkgs.writeShellScriptBin "dotfiles-update" ''
+      set -euo pipefail
+
+      cd "${dotfiles}"
+
+      echo
+      echo "==> Updating locked Nix / FirstMate / Treehouse sources"
+      nix flake update
+
+      echo
+      echo "==> Rebuilding"
+      ./rebuild.sh
+
+      echo
+      echo "==> Updating FirstMate npm AXIs"
+      npm install -g \
+        gh-axi@latest \
+        chrome-devtools-axi@latest \
+        lavish-axi@latest \
+        tasks-axi@latest \
+        quota-axi@latest
+
+      echo
+      echo "==> Done"
+      echo "Review git diff and commit flake.lock when satisfied."
+    '';
+
+
+  # ─────────────────────────────────────────────────────────────
+  # FirstMate toolchain checker
+  # ─────────────────────────────────────────────────────────────
+
+  firstmateDoctor =
+    pkgs.writeShellScriptBin "firstmate-doctor" ''
+      set -u
+
+      failed=0
+
+      commands=(
+        node
+        npm
+        git
+        gh
+        jq
+        herdr
+        treehouse
+        no-mistakes
+        gh-axi
+        chrome-devtools-axi
+        lavish-axi
+        tasks-axi
+        quota-axi
+      )
+
+      echo
+      echo "FirstMate toolchain"
+      echo
+
+      for cmd in "''${commands[@]}"; do
+        printf "%-24s " "$cmd"
+
+        if command -v "$cmd" >/dev/null 2>&1; then
+          echo "✓ $(command -v "$cmd")"
+        else
+          echo "✗ MISSING"
+          failed=1
+        fi
+      done
+
+      echo
+
+      exit "$failed"
+    '';
 
 in
 {
@@ -115,19 +171,139 @@ in
   # ─────────────────────────────────────────────────────────────
 
   home.username = user;
-  home.homeDirectory = "/Users/${user}";
 
-  # Intentionally adopting 26.05 Home Manager defaults.
-  home.stateVersion = "26.05";
+  home.homeDirectory =
+    "/Users/${user}";
 
-  programs.home-manager.enable = true;
+  home.stateVersion =
+    "26.05";
+
+  programs.home-manager.enable =
+    true;
 
 
   # ─────────────────────────────────────────────────────────────
-  # npm configuration
+  # XDG
+  # ─────────────────────────────────────────────────────────────
+
+  xdg.enable = true;
+
+
+  # ─────────────────────────────────────────────────────────────
+  # Packages
+  # ─────────────────────────────────────────────────────────────
+
+  home.packages = with pkgs; [
+    # ----------------------------------------------------------
+    # Runtime
+    # ----------------------------------------------------------
+
+    nodejs_24
+
+    # no-mistakes currently builds with Go 1.25 upstream.
+    go_1_25
+
+
+    # ----------------------------------------------------------
+    # Search / files
+    # ----------------------------------------------------------
+
+    ripgrep
+    fd
+
+
+    # ----------------------------------------------------------
+    # Structured data
+    # ----------------------------------------------------------
+
+    jq
+    jnv
+
+
+    # ----------------------------------------------------------
+    # HTTP
+    # ----------------------------------------------------------
+
+    xh
+
+
+    # ----------------------------------------------------------
+    # Text
+    # ----------------------------------------------------------
+
+    sd
+
+
+    # ----------------------------------------------------------
+    # Filesystem
+    # ----------------------------------------------------------
+
+    dust
+    duf
+
+
+    # ----------------------------------------------------------
+    # Monitoring
+    # ----------------------------------------------------------
+
+    btop
+
+
+    # ----------------------------------------------------------
+    # Archives
+    # ----------------------------------------------------------
+
+    ouch
+
+
+    # ----------------------------------------------------------
+    # Benchmarking
+    # ----------------------------------------------------------
+
+    hyperfine
+
+
+    # ----------------------------------------------------------
+    # Networking
+    # ----------------------------------------------------------
+
+    doggo
+
+
+    # ----------------------------------------------------------
+    # Nix
+    # ----------------------------------------------------------
+
+    nix-output-monitor
+    comma
+    nix-tree
+    nvd
+
+
+    # ----------------------------------------------------------
+    # Update tooling
+    # ----------------------------------------------------------
+
+    topgrade
+
+
+    # ----------------------------------------------------------
+    # FirstMate ecosystem
+    # ----------------------------------------------------------
+
+    treehouse
+    firstmateLauncher
+    firstmateDoctor
+    dotfilesUpdate
+  ];
+
+
+  # ─────────────────────────────────────────────────────────────
+  # npm
   #
-  # Nix's Node installation lives in the read-only Nix store.
-  # Global npm packages therefore use a writable user prefix.
+  # Nix's Node installation lives in /nix/store, which is
+  # read-only. Global FirstMate npm CLIs therefore get their own
+  # user-writable prefix.
   # ─────────────────────────────────────────────────────────────
 
   home.file.".npmrc" = {
@@ -143,95 +319,24 @@ in
 
 
   # ─────────────────────────────────────────────────────────────
-  # Packages
-  # ─────────────────────────────────────────────────────────────
-
-  home.packages = with pkgs; [
-    # Node runtime for FirstMate AXIs.
-    #
-    # quota-axi requires Node >= 22.19.
-    nodejs_24
-
-
-    # Search / files
-    ripgrep
-    fd
-
-
-    # Structured data
-    jq
-    jnv
-
-
-    # HTTP
-    xh
-    tmux
-
-
-    # Text
-    sd
-
-
-    # Disk / filesystem
-    dust
-    duf
-
-
-    # Monitoring
-    btop
-
-
-    # Archives
-    ouch
-
-
-    # Benchmarking
-    hyperfine
-
-
-    # DNS
-    doggo
-
-
-    # Nix tooling
-    nix-output-monitor
-    comma
-    nix-tree
-    nvd
-
-
-    # Unified updater
-    topgrade
-
-
-    # FirstMate ecosystem
-    treehousePackage
-    firstmateLauncher
-  ];
-
-
-  # ─────────────────────────────────────────────────────────────
   # Zsh
   # ─────────────────────────────────────────────────────────────
 
   programs.zsh = {
     enable = true;
+
     enableCompletion = true;
 
     autosuggestion.enable = true;
+
     syntaxHighlighting.enable = true;
 
+
     initContent = ''
-      # Accept autosuggestion with Ctrl-F.
       bindkey '^f' autosuggest-accept
 
-      # ---------------------------------------------------------
-      # PATH
-      #
-      # Protected/system-controlled paths come before writable
-      # user paths to keep Automic Vault's PATH audit happy.
-      # ---------------------------------------------------------
-
+      # Keep protected/system-managed paths ahead of writable
+      # user paths for Automic Vault's exposure audit.
       path=(
         /run/current-system/sw/bin
         /etc/profiles/per-user/${user}/bin
@@ -251,9 +356,9 @@ in
         $path
       )
 
-      # Remove duplicates while keeping the first occurrence.
       typeset -U path PATH
     '';
+
 
     shellAliases = {
       ".." = "cd ..";
@@ -264,12 +369,15 @@ in
       pull = "git pull";
       m = "git switch main";
 
-      # Agents
+      # High-agency shortcuts inherited from the desired workflow.
       cc = "claude --dangerously-skip-permissions";
       co = "codex --full-auto";
 
       # FirstMate
       fm = "firstmate";
+
+      # Declarative update workflow.
+      update-dotfiles = "dotfiles-update";
     };
   };
 
@@ -303,28 +411,35 @@ in
       };
 
       git_branch = {
-        format = "[$symbol$branch]($style) ";
+        format =
+          "[$symbol$branch]($style) ";
       };
 
       git_status = {
-        format = "([$all_status$ahead_behind]($style) )";
+        format =
+          "([$all_status$ahead_behind]($style) )";
       };
 
       cmd_duration = {
         min_time = 1000;
-        format = "[$duration]($style) ";
+
+        format =
+          "[$duration]($style) ";
       };
 
       character = {
-        success_symbol = "[❯](purple)";
-        error_symbol = "[❯](red)";
+        success_symbol =
+          "[❯](purple)";
+
+        error_symbol =
+          "[❯](red)";
       };
     };
   };
 
 
   # ─────────────────────────────────────────────────────────────
-  # FZF
+  # Core shell programs
   # ─────────────────────────────────────────────────────────────
 
   programs.fzf = {
@@ -332,33 +447,15 @@ in
     enableZshIntegration = true;
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Zoxide
-  # ─────────────────────────────────────────────────────────────
-
   programs.zoxide = {
     enable = true;
     enableZshIntegration = true;
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Atuin
-  #
-  # AV currently detects its local sync key but has no write-safe
-  # migration. Leave its runtime key local.
-  # ─────────────────────────────────────────────────────────────
-
   programs.atuin = {
     enable = true;
     enableZshIntegration = true;
   };
-
-
-  # ─────────────────────────────────────────────────────────────
-  # Eza
-  # ─────────────────────────────────────────────────────────────
 
   programs.eza = {
     enable = true;
@@ -373,19 +470,8 @@ in
     ];
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Bat
-  # ─────────────────────────────────────────────────────────────
-
-  programs.bat = {
-    enable = true;
-  };
-
-
-  # ─────────────────────────────────────────────────────────────
-  # Yazi
-  # ─────────────────────────────────────────────────────────────
+  programs.bat.enable =
+    true;
 
   programs.yazi = {
     enable = true;
@@ -395,8 +481,6 @@ in
 
   # ─────────────────────────────────────────────────────────────
   # Neovim
-  #
-  # Actual config remains editable under ~/dotfiles.
   # ─────────────────────────────────────────────────────────────
 
   programs.neovim = {
@@ -408,8 +492,7 @@ in
     vimAlias = true;
     vimdiffAlias = true;
 
-    # Required because ~/.config/nvim itself is an out-of-store
-    # symlink below.
+    # Required because ~/.config/nvim is linked to the repository.
     sideloadInitLua = true;
   };
 
@@ -428,16 +511,11 @@ in
 
       push.autoSetupRemote = true;
 
-      # Remember resolutions when rebasing our customization
-      # commits over Kun's upstream changes.
+      # Useful for repeatedly rebasing personal changes over Kun.
       rerere.enabled = true;
     };
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Delta
-  # ─────────────────────────────────────────────────────────────
 
   programs.delta = {
     enable = true;
@@ -451,61 +529,60 @@ in
   };
 
 
-  # ─────────────────────────────────────────────────────────────
-  # Lazygit
-  # ─────────────────────────────────────────────────────────────
-
-  programs.lazygit = {
-    enable = true;
-  };
+  programs.lazygit.enable =
+    true;
 
 
   # ─────────────────────────────────────────────────────────────
   # GitHub CLI
   #
-  # INTENTIONALLY absent:
+  # INTENTIONALLY ABSENT:
   #
-  #   programs.gh
-  #   pkgs.gh
+  # programs.gh
   #
-  # Automic Vault's gh-cli isotope is the one owner.
+  # Automic Vault's gh isotope owns gh.
   # ─────────────────────────────────────────────────────────────
 
 
   # ─────────────────────────────────────────────────────────────
   # SSH
   #
-  # INTENTIONALLY absent:
+  # INTENTIONALLY ABSENT:
   #
-  #   programs.ssh
+  # programs.ssh
   #
-  # ~/.ssh remains local and outside Nix.
+  # SSH private keys/config remain local.
   # ─────────────────────────────────────────────────────────────
 
 
-  # ─────────────────────────────────────────────────────────────
-  # Tealdeer
-  # ─────────────────────────────────────────────────────────────
+  programs.tealdeer.enable =
+    true;
 
-  programs.tealdeer = {
+
+  programs.nh = {
     enable = true;
+
+    darwinFlake =
+      dotfiles;
   };
 
 
   # ─────────────────────────────────────────────────────────────
-  # nh
+  # Treehouse
   # ─────────────────────────────────────────────────────────────
 
-  programs.nh = {
-    enable = true;
-    darwinFlake = dotfiles;
+  xdg.configFile."treehouse/config.toml" = {
+    text = ''
+      max_trees = 16
+    '';
   };
 
 
   # ─────────────────────────────────────────────────────────────
   # Topgrade
   #
-  # Home Manager + Brew already belong to nix-darwin.
+  # Do not let Topgrade independently mutate Brew or Home Manager.
+  # nix-darwin remains the owner.
   # ─────────────────────────────────────────────────────────────
 
   xdg.configFile."topgrade.toml" = {
@@ -529,305 +606,223 @@ in
 
 
   # ─────────────────────────────────────────────────────────────
-  # FirstMate local operating choices
+  # FirstMate checkout
   #
-  # These are configuration, not private fleet data.
+  # FirstMate explicitly says the cloned repository is the distro.
+  #
+  # The exact source revision comes from flake.lock.
+  # ─────────────────────────────────────────────────────────────
+
+  home.activation.firstmateCheckout =
+    lib.hm.dag.entryAfter
+      [ "writeBoundary" ]
+      ''
+        set -eu
+
+        repo="${firstmateRoot}"
+        rev="${firstmateRev}"
+        git="${pkgs.git}/bin/git"
+
+        mkdir -p "$(dirname "$repo")"
+
+        if [ ! -e "$repo" ]; then
+          echo "Creating FirstMate checkout..."
+
+          "$git" clone \
+            https://github.com/kunchenguid/firstmate.git \
+            "$repo"
+        fi
+
+        if [ ! -d "$repo/.git" ]; then
+          echo "ERROR: $repo exists but is not a Git checkout."
+          exit 1
+        fi
+
+        # Refuse to destroy personal edits to FirstMate code.
+        if [ -n "$("$git" -C "$repo" status --porcelain --untracked-files=no)" ]; then
+          echo
+          echo "ERROR: ~/firstmate contains tracked local edits."
+          echo
+          "$git" -C "$repo" status --short
+          echo
+          echo "Commit/stash/revert those edits before rebuilding."
+          exit 1
+        fi
+
+        if "$git" -C "$repo" remote get-url nix-upstream >/dev/null 2>&1; then
+          "$git" -C "$repo" remote set-url \
+            nix-upstream \
+            https://github.com/kunchenguid/firstmate.git
+        else
+          "$git" -C "$repo" remote add \
+            nix-upstream \
+            https://github.com/kunchenguid/firstmate.git
+        fi
+
+        if ! "$git" -C "$repo" cat-file -e "$rev^{commit}" 2>/dev/null; then
+          echo "Fetching locked FirstMate revision $rev..."
+
+          "$git" -C "$repo" fetch \
+            nix-upstream \
+            "$rev"
+        fi
+
+        current="$("$git" -C "$repo" rev-parse HEAD)"
+
+        if [ "$current" != "$rev" ]; then
+          echo "Switching FirstMate to locked revision $rev..."
+
+          "$git" -C "$repo" checkout \
+            --detach \
+            "$rev"
+        fi
+
+        mkdir -p \
+          "${firstmateHome}/data" \
+          "${firstmateHome}/state" \
+          "${firstmateHome}/config" \
+          "${firstmateHome}/projects"
+      '';
+
+
+  # ─────────────────────────────────────────────────────────────
+  # FirstMate config
+  #
+  # Herdr backend + Pi crew harness.
   # ─────────────────────────────────────────────────────────────
 
   home.file.".local/share/firstmate/config/backend" = {
-    force = true;
     text = "herdr\n";
   };
 
   home.file.".local/share/firstmate/config/crew-harness" = {
-    force = true;
     text = "pi\n";
   };
-
-  home.file.".local/share/firstmate/config/backlog-backend" = {
-    force = true;
-    text = "tasks-axi\n";
-  };
-
-
-  # ─────────────────────────────────────────────────────────────
-  # FirstMate checkout
-  #
-  # Converge ~/firstmate to the exact revision recorded by
-  # flake.lock.
-  #
-  # Existing tracked edits are NEVER destroyed.
-  # ─────────────────────────────────────────────────────────────
-
-  home.activation.firstmateCheckout =
-    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      set -eu
-
-      repo="${firstmateCheckout}"
-      fm_home="${firstmateHome}"
-      rev="${firstmateRev}"
-
-      git="${pkgs.git}/bin/git"
-
-      mkdir -p "$(dirname "$repo")"
-      mkdir -p "$fm_home/data"
-      mkdir -p "$fm_home/state"
-      mkdir -p "$fm_home/config"
-      mkdir -p "$fm_home/projects"
-
-      # Fresh machine.
-      if [ ! -e "$repo" ]; then
-        echo "Installing FirstMate checkout..."
-
-        "$git" clone \
-          https://github.com/kunchenguid/firstmate.git \
-          "$repo"
-      fi
-
-      # Never overwrite an unrelated directory.
-      if [ ! -d "$repo/.git" ]; then
-        echo "ERROR: $repo exists but is not a Git checkout."
-        exit 1
-      fi
-
-      # Refuse to destroy authored/tracked local edits.
-      if [ -n "$("$git" -C "$repo" status --porcelain --untracked-files=no)" ]; then
-        echo "ERROR: FirstMate has tracked local modifications."
-        echo
-        "$git" -C "$repo" status --short
-        echo
-        echo "Commit, stash, or revert them before rebuilding."
-        exit 1
-      fi
-
-      # Dedicated remote owned by the Nix convergence rule.
-      if "$git" -C "$repo" remote get-url nix-upstream >/dev/null 2>&1; then
-        "$git" -C "$repo" remote set-url \
-          nix-upstream \
-          https://github.com/kunchenguid/firstmate.git
-      else
-        "$git" -C "$repo" remote add \
-          nix-upstream \
-          https://github.com/kunchenguid/firstmate.git
-      fi
-
-      # Make sure the exact flake.lock commit exists locally.
-      if ! "$git" -C "$repo" cat-file -e "$rev^{commit}" 2>/dev/null; then
-        echo "Fetching pinned FirstMate revision $rev..."
-
-        "$git" -C "$repo" fetch \
-          nix-upstream \
-          "$rev"
-      fi
-
-      current="$("$git" -C "$repo" rev-parse HEAD)"
-
-      if [ "$current" != "$rev" ]; then
-        # Automatic updates are allowed only when the current
-        # checkout can fast-forward to the locked revision.
-        if "$git" -C "$repo" merge-base --is-ancestor "$current" "$rev"; then
-          echo "Updating FirstMate to pinned revision $rev..."
-
-          "$git" -C "$repo" checkout main
-
-          "$git" -C "$repo" reset --hard "$rev"
-        else
-          echo "ERROR: ~/firstmate cannot fast-forward to the pinned revision."
-          echo
-          echo "current: $current"
-          echo "wanted:  $rev"
-          echo
-          echo "Refusing to destroy divergent/local FirstMate history."
-          exit 1
-        fi
-      fi
-    '';
 
 
   # ─────────────────────────────────────────────────────────────
   # no-mistakes
   #
-  # Upstream does not currently ship a Nix flake.
+  # Source revision is locked by flake.lock.
   #
-  # We install an EXACT official signed release and validate the
-  # permanent Developer ID identity before accepting it.
+  # Build/install from that exact checkout during activation.
   #
-  # This preserves the upstream signing identity rather than
-  # producing an unsigned local Go build.
+  # Its go.mod currently specifies Go 1.25.
   # ─────────────────────────────────────────────────────────────
 
   home.activation.noMistakes =
-    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      set -eu
+    lib.hm.dag.entryAfter
+      [ "writeBoundary" ]
+      ''
+        set -eu
 
-      version="${noMistakesVersion}"
+        src="${inputs.no-mistakes}"
+        dest="$HOME/.local/bin"
 
-      bin_dir="$HOME/.local/bin"
-      state_dir="$HOME/.local/state/dotfiles"
+        mkdir -p "$dest"
 
-      bin="$bin_dir/no-mistakes"
-      marker="$state_dir/no-mistakes-version"
+        echo "Building locked no-mistakes source..."
 
-      mkdir -p "$bin_dir"
-      mkdir -p "$state_dir"
+        tmp="$(${pkgs.coreutils}/bin/mktemp -d)"
 
-      valid=0
+        cleanup() {
+          rm -rf "$tmp"
+        }
 
-      if [ -x "$bin" ] && [ -f "$marker" ]; then
-        if [ "$(cat "$marker")" = "$version" ]; then
-          if /usr/bin/codesign --verify --strict "$bin" >/dev/null 2>&1; then
-            meta="$(/usr/bin/codesign -dv --verbose=4 "$bin" 2>&1 || true)"
+        trap cleanup EXIT
 
-            if printf '%s\n' "$meta" \
-              | /usr/bin/grep -q 'Identifier=com.kunchenguid.no-mistakes' \
-              && printf '%s\n' "$meta" \
-              | /usr/bin/grep -q 'TeamIdentifier=9T2J7MNUP9'
-            then
-              valid=1
-            fi
-          fi
-        fi
-      fi
+        cp -R "$src"/. "$tmp"/
 
-      if [ "$valid" -ne 1 ]; then
-        echo "Installing signed no-mistakes v$version..."
+        chmod -R u+w "$tmp"
 
-        tmp="$(/usr/bin/mktemp -d)"
+        cd "$tmp"
 
-        trap '/bin/rm -rf "$tmp"' EXIT
+        ${pkgs.go_1_25}/bin/go build \
+          -trimpath \
+          -o "$dest/no-mistakes" \
+          .
 
-        archive="no-mistakes-v$version-darwin-arm64.tar.gz"
-
-        url="https://github.com/kunchenguid/no-mistakes/releases/download/v$version/$archive"
-
-        "${pkgs.curl}/bin/curl" \
-          -fsSL \
-          "$url" \
-          -o "$tmp/$archive"
-
-        /usr/bin/tar \
-          -xzf "$tmp/$archive" \
-          -C "$tmp"
-
-        candidate="$tmp/no-mistakes"
-
-        /usr/bin/codesign \
-          --verify \
-          --strict \
-          "$candidate"
-
-        meta="$(/usr/bin/codesign -dv --verbose=4 "$candidate" 2>&1)"
-
-        printf '%s\n' "$meta" \
-          | /usr/bin/grep -q 'Identifier=com.kunchenguid.no-mistakes'
-
-        printf '%s\n' "$meta" \
-          | /usr/bin/grep -q 'TeamIdentifier=9T2J7MNUP9'
-
-        /usr/bin/install \
-          -m 0755 \
-          "$candidate" \
-          "$bin"
-
-        # Verify once more after copying.
-        /usr/bin/codesign \
-          --verify \
-          --strict \
-          "$bin"
-
-        printf '%s\n' "$version" > "$marker"
-
-        /bin/rm -rf "$tmp"
-        trap - EXIT
-      fi
-
-      # Best-effort daemon convergence.
-      "$bin" daemon start >/dev/null 2>&1 || true
-    '';
+        chmod 755 "$dest/no-mistakes"
+      '';
 
 
   # ─────────────────────────────────────────────────────────────
   # FirstMate npm AXIs
   #
-  # Exact top-level versions are declared here.
+  # FirstMate currently explicitly requires these binaries.
   #
-  # npm creates/manages the executable links itself.
-  # No sudo and no hand-written ln -s.
+  # npm is allowed to own just this controlled prefix.
+  #
+  # This activation installs missing tools.
+  #
+  # Version upgrades are done explicitly by `dotfiles-update`.
   # ─────────────────────────────────────────────────────────────
 
   home.activation.firstmateAxiTools =
-    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      set -eu
+    lib.hm.dag.entryAfter
+      [ "writeBoundary" ]
+      ''
+        set -eu
 
-      prefix="${npmGlobalPrefix}"
-      state_dir="$HOME/.local/state/dotfiles"
+        export NPM_CONFIG_PREFIX="${npmGlobalPrefix}"
 
-      marker="$state_dir/firstmate-axi-versions"
+        mkdir -p \
+          "${npmGlobalPrefix}/bin" \
+          "${npmGlobalPrefix}/lib"
 
-      mkdir -p "$prefix/bin"
-      mkdir -p "$state_dir"
+        install_if_missing() {
+          cmd="$1"
+          package="$2"
 
-      wanted="$(
-        cat <<'EOF'
-gh-axi=${axiVersions.gh}
-chrome-devtools-axi=${axiVersions.chromeDevtools}
-lavish-axi=${axiVersions.lavish}
-tasks-axi=${axiVersions.tasks}
-quota-axi=${axiVersions.quota}
-EOF
-      )"
+          if [ ! -x "${npmGlobalPrefix}/bin/$cmd" ]; then
+            echo "Installing FirstMate companion: $package"
 
-      valid=0
+            ${pkgs.nodejs_24}/bin/npm install \
+              --global \
+              "$package"
+          fi
+        }
 
-      if [ -f "$marker" ]; then
-        current="$(cat "$marker")"
+        install_if_missing \
+          gh-axi \
+          gh-axi
 
-        if [ "$current" = "$wanted" ] \
-          && [ -x "$prefix/bin/gh-axi" ] \
-          && [ -x "$prefix/bin/chrome-devtools-axi" ] \
-          && [ -x "$prefix/bin/lavish-axi" ] \
-          && [ -x "$prefix/bin/tasks-axi" ] \
-          && [ -x "$prefix/bin/quota-axi" ]
-        then
-          valid=1
-        fi
-      fi
+        install_if_missing \
+          chrome-devtools-axi \
+          chrome-devtools-axi
 
-      if [ "$valid" -ne 1 ]; then
-        echo "Installing pinned FirstMate AXI toolchain..."
+        install_if_missing \
+          lavish-axi \
+          lavish-axi
 
-        "${pkgs.nodejs_24}/bin/npm" \
-          install \
-          --global \
-          --prefix "$prefix" \
-          --no-audit \
-          --no-fund \
-          "gh-axi@${axiVersions.gh}" \
-          "chrome-devtools-axi@${axiVersions.chromeDevtools}" \
-          "lavish-axi@${axiVersions.lavish}" \
-          "tasks-axi@${axiVersions.tasks}" \
-          "quota-axi@${axiVersions.quota}"
+        install_if_missing \
+          tasks-axi \
+          tasks-axi
 
-        printf '%s\n' "$wanted" > "$marker"
-      fi
-    '';
+        install_if_missing \
+          quota-axi \
+          quota-axi
+      '';
 
 
   # ─────────────────────────────────────────────────────────────
-  # Authored dotfile links
+  # Repository-authored configs
   # ─────────────────────────────────────────────────────────────
 
   home.file.".config/wezterm".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/.config/wezterm";
 
+
   home.file.".config/nvim".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/.config/nvim";
 
+
   home.file.".config/herdr".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/.config/herdr";
+
 
   home.file.".claude/settings.json".source =
     config.lib.file.mkOutOfStoreSymlink
@@ -837,20 +832,24 @@ EOF
   # ─────────────────────────────────────────────────────────────
   # Pi
   #
-  # Keep credentials/runtime state local.
+  # Only authored config is linked.
+  # Credentials/sessions/cache remain local.
   # ─────────────────────────────────────────────────────────────
 
   home.file.".pi/agent/themes".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/.pi/agent/themes";
 
+
   home.file.".pi/agent/extensions".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/.pi/agent/extensions";
 
+
   home.file.".pi/agent/models.json".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/.pi/agent/models.json";
+
 
   home.file.".pi/agent/settings.json".source =
     config.lib.file.mkOutOfStoreSymlink
@@ -865,9 +864,11 @@ EOF
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/AGENTS.md";
 
+
   home.file.".codex/AGENTS.md".source =
     config.lib.file.mkOutOfStoreSymlink
       "${dotfiles}/home/AGENTS.md";
+
 
   home.file.".config/opencode/AGENTS.md".source =
     config.lib.file.mkOutOfStoreSymlink

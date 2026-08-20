@@ -1,11 +1,15 @@
-{ pkgs, user, ... }:
+{
+  pkgs,
+  user,
+  ...
+}:
 
 {
   # ─────────────────────────────────────────────────────────────
-  # Determinate Nix
+  # Nix
   #
-  # Determinate owns the Nix installation and daemon.
-  # nix-darwin must not try to manage Nix as well.
+  # Determinate Nix owns the Nix daemon.
+  # nix-darwin must not manage another daemon.
   # ─────────────────────────────────────────────────────────────
 
   nix.enable = false;
@@ -18,13 +22,12 @@
   nixpkgs = {
     config.allowUnfree = true;
 
-    # Apple Silicon Mac.
     hostPlatform = "aarch64-darwin";
   };
 
 
   # ─────────────────────────────────────────────────────────────
-  # Primary macOS user
+  # User
   # ─────────────────────────────────────────────────────────────
 
   system.primaryUser = user;
@@ -35,11 +38,14 @@
 
 
   # ─────────────────────────────────────────────────────────────
+  # nix-darwin compatibility
+  # ─────────────────────────────────────────────────────────────
+
+  system.stateVersion = 6;
+
+
+  # ─────────────────────────────────────────────────────────────
   # Fonts
-  #
-  # nix-darwin registers these with macOS under:
-  #
-  # /Library/Fonts/Nix Fonts
   # ─────────────────────────────────────────────────────────────
 
   fonts.packages = with pkgs; [
@@ -48,9 +54,9 @@
 
 
   # ─────────────────────────────────────────────────────────────
-  # sudo + Touch ID
+  # sudo
   #
-  # nix-darwin owns PAM, so this stays declarative here.
+  # Touch ID + no long-lived sudo authentication cache.
   # ─────────────────────────────────────────────────────────────
 
   security.pam.services.sudo_local = {
@@ -58,30 +64,24 @@
     touchIdAuth = true;
   };
 
-  # Require fresh sudo authentication instead of leaving a
-  # reusable grace window.
   security.sudo.extraConfig = ''
     Defaults timestamp_timeout=0
   '';
 
 
   # ─────────────────────────────────────────────────────────────
-  # macOS defaults
+  # macOS
   # ─────────────────────────────────────────────────────────────
 
   system.defaults = {
     NSGlobalDomain = {
-      # Appearance
       AppleInterfaceStyle = "Dark";
 
-      # Fast keyboard repeat
       KeyRepeat = 2;
       InitialKeyRepeat = 15;
 
-      # Auto-hide menu bar
       _HIHideMenuBar = true;
 
-      # Always show file extensions
       AppleShowAllExtensions = true;
     };
 
@@ -90,10 +90,7 @@
     };
 
     finder = {
-      # List view
       FXPreferredViewStyle = "Nlsv";
-
-      # Clean desktop
       CreateDesktop = false;
     };
 
@@ -105,11 +102,6 @@
 
   # ─────────────────────────────────────────────────────────────
   # nix-homebrew
-  #
-  # nix-homebrew owns the Homebrew installation.
-  #
-  # nix-darwin's homebrew.* configuration below owns the
-  # declarative Brewfile/package set.
   # ─────────────────────────────────────────────────────────────
 
   nix-homebrew = {
@@ -117,11 +109,8 @@
 
     inherit user;
 
-    # Apple Silicon only.
     enableRosetta = false;
 
-    # External taps remain mutable because they are not currently
-    # provided as separate pinned flake inputs.
     mutableTaps = true;
   };
 
@@ -129,12 +118,12 @@
   # ─────────────────────────────────────────────────────────────
   # Homebrew
   #
-  # IMPORTANT:
+  # Homebrew is for:
+  # - macOS GUI applications
+  # - things that genuinely need Brew
+  # - Automic Vault isotopes
   #
-  # cleanup = "zap" is deliberate.
-  #
-  # Anything installed through Homebrew but absent here can be
-  # removed during the next rebuild.
+  # Normal CLI tools stay in Home Manager.
   # ─────────────────────────────────────────────────────────────
 
   homebrew = {
@@ -145,25 +134,23 @@
     enableZshIntegration = true;
 
 
-    # Manual Homebrew commands should not unexpectedly update
-    # everything. Updates are centralized in rebuild activation.
     global = {
+      # Random manual brew commands should not unexpectedly mutate
+      # package versions.
       autoUpdate = false;
-
-      # `brew bundle` manually will use nix-darwin's generated
-      # Brewfile.
-      brewfile = true;
     };
 
 
     onActivation = {
-      # Refresh Brew metadata during our declarative rebuild.
+      # During our declarative switch, refresh Brew metadata.
       autoUpdate = true;
 
-      # Upgrade declared packages.
+      # Keep declared Brew software current.
       upgrade = true;
 
-      # DO NOT change this to none/uninstall.
+      # VERY INTENTIONAL.
+      #
+      # Anything Brew-installed but not declared below is removed.
       cleanup = "zap";
 
       extraEnv = {
@@ -173,10 +160,6 @@
       };
     };
 
-
-    # ───────────────────────────────────────────────────────────
-    # Third-party taps
-    # ───────────────────────────────────────────────────────────
 
     taps = [
       {
@@ -191,27 +174,19 @@
     ];
 
 
-    # ───────────────────────────────────────────────────────────
-    # Brew formulae
-    # ───────────────────────────────────────────────────────────
-
     brews = [
-      # FirstMate's terminal/session backend.
+      # Herdr backend for FirstMate.
       "herdr"
 
-      # Hardened GitHub CLI owned by Automic Vault.
+      # Automic Vault hardened GitHub CLI.
       #
-      # Do NOT install pkgs.gh or programs.gh in home.nix.
+      # DO NOT also enable programs.gh in home.nix.
       {
         name = "automic-vault/isotopes/gh-cli";
         trusted = true;
       }
     ];
 
-
-    # ───────────────────────────────────────────────────────────
-    # GUI / macOS casks
-    # ───────────────────────────────────────────────────────────
 
     casks = [
       "wezterm"
@@ -231,13 +206,4 @@
       "google-chrome"
     ];
   };
-
-
-  # ─────────────────────────────────────────────────────────────
-  # nix-darwin compatibility version
-  #
-  # Do not change simply because nix-darwin updates.
-  # ─────────────────────────────────────────────────────────────
-
-  system.stateVersion = 6;
 }
