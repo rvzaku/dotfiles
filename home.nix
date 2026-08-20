@@ -165,6 +165,7 @@ in
 
     # HTTP
     xh
+    tmux
 
 
     # Text
