@@ -4,8 +4,8 @@
   # ─────────────────────────────────────────────────────────────
   # Determinate Nix
   #
-  # Determinate manages the Nix daemon/configuration.
-  # nix-darwin must not try to manage Nix itself.
+  # Determinate owns the Nix installation and daemon.
+  # nix-darwin must not try to manage Nix as well.
   # ─────────────────────────────────────────────────────────────
 
   nix.enable = false;
@@ -18,7 +18,7 @@
   nixpkgs = {
     config.allowUnfree = true;
 
-    # Apple Silicon
+    # Apple Silicon Mac.
     hostPlatform = "aarch64-darwin";
   };
 
@@ -37,12 +37,9 @@
   # ─────────────────────────────────────────────────────────────
   # Fonts
   #
-  # Install GUI-visible fonts through nix-darwin.
+  # nix-darwin registers these with macOS under:
   #
-  # Result:
-  #   /Library/Fonts/Nix Fonts
-  #
-  # Do NOT duplicate nerd-fonts.hack in home.packages.
+  # /Library/Fonts/Nix Fonts
   # ─────────────────────────────────────────────────────────────
 
   fonts.packages = with pkgs; [
@@ -51,12 +48,9 @@
 
 
   # ─────────────────────────────────────────────────────────────
-  # Sudo / Touch ID
+  # sudo + Touch ID
   #
-  # Declarative equivalent of the sudo hardening AV detected.
-  #
-  # We intentionally let nix-darwin own /etc/pam.d/sudo_local
-  # because nix-darwin already owns PAM configuration.
+  # nix-darwin owns PAM, so this stays declarative here.
   # ─────────────────────────────────────────────────────────────
 
   security.pam.services.sudo_local = {
@@ -64,10 +58,8 @@
     touchIdAuth = true;
   };
 
-  # Do not allow a previous sudo authentication to remain cached.
-  #
-  # This is particularly useful on a machine where agents may also
-  # execute terminal commands.
+  # Require fresh sudo authentication instead of leaving a
+  # reusable grace window.
   security.sudo.extraConfig = ''
     Defaults timestamp_timeout=0
   '';
@@ -82,14 +74,14 @@
       # Appearance
       AppleInterfaceStyle = "Dark";
 
-      # Keyboard
+      # Fast keyboard repeat
       KeyRepeat = 2;
       InitialKeyRepeat = 15;
 
-      # Menu bar
+      # Auto-hide menu bar
       _HIHideMenuBar = true;
 
-      # Files
+      # Always show file extensions
       AppleShowAllExtensions = true;
     };
 
@@ -116,8 +108,8 @@
   #
   # nix-homebrew owns the Homebrew installation.
   #
-  # nix-darwin's homebrew.* section below owns the actual
-  # package/cask/tap declaration.
+  # nix-darwin's homebrew.* configuration below owns the
+  # declarative Brewfile/package set.
   # ─────────────────────────────────────────────────────────────
 
   nix-homebrew = {
@@ -126,11 +118,10 @@
     inherit user;
 
     # Apple Silicon only.
-    # Enable only if you actually need Intel-only Brew packages.
     enableRosetta = false;
 
-    # Keep this enabled with the current flake because your external
-    # taps are not being provided as pinned nix-homebrew flake inputs.
+    # External taps remain mutable because they are not currently
+    # provided as separate pinned flake inputs.
     mutableTaps = true;
   };
 
@@ -138,16 +129,12 @@
   # ─────────────────────────────────────────────────────────────
   # Homebrew
   #
-  # POLICY:
+  # IMPORTANT:
   #
-  # Homebrew packages are declarative.
+  # cleanup = "zap" is deliberate.
   #
-  # cleanup = "zap" IS INTENTIONAL.
-  #
-  # Anything installed using Homebrew that is not declared here is
-  # removed during darwin-rebuild.
-  #
-  # Do NOT change this to "none" or "uninstall".
+  # Anything installed through Homebrew but absent here can be
+  # removed during the next rebuild.
   # ─────────────────────────────────────────────────────────────
 
   homebrew = {
@@ -158,48 +145,37 @@
     enableZshIntegration = true;
 
 
-    # ───────────────────────────────────────────────────────────
-    # Homebrew behavior outside darwin-rebuild
-    #
-    # Avoid Homebrew unexpectedly updating itself simply because
-    # you manually invoked a brew command.
-    #
-    # Updates/upgrades are centralized in darwin-rebuild below.
-    # ───────────────────────────────────────────────────────────
-
+    # Manual Homebrew commands should not unexpectedly update
+    # everything. Updates are centralized in rebuild activation.
     global = {
       autoUpdate = false;
+
+      # `brew bundle` manually will use nix-darwin's generated
+      # Brewfile.
+      brewfile = true;
     };
 
 
-    # ───────────────────────────────────────────────────────────
-    # Rebuild behavior
-    # ───────────────────────────────────────────────────────────
-
     onActivation = {
-      # Update Brew metadata during a declarative rebuild.
+      # Refresh Brew metadata during our declarative rebuild.
       autoUpdate = true;
 
-      # Upgrade declared formulae/casks during the rebuild.
+      # Upgrade declared packages.
       upgrade = true;
 
-      # INTENTIONAL.
-      #
-      # Forces the good habit of declaring every persistent
-      # Homebrew dependency here.
-      #
-      # Any undeclared Homebrew package/cask is removed.
+      # DO NOT change this to none/uninstall.
       cleanup = "zap";
 
       extraEnv = {
-        HOMEBREW_NO_ENV_HINTS = "1";
         HOMEBREW_NO_ANALYTICS = "1";
+        HOMEBREW_NO_ENV_HINTS = "1";
+        HOMEBREW_NO_UPDATE_REPORT_NEW = "1";
       };
     };
 
 
     # ───────────────────────────────────────────────────────────
-    # External taps
+    # Third-party taps
     # ───────────────────────────────────────────────────────────
 
     taps = [
@@ -207,23 +183,25 @@
         name = "automic-vault/isotopes";
         trusted = true;
       }
+
+      {
+        name = "kunchenguid/tap";
+        trusted = true;
+      }
     ];
 
 
     # ───────────────────────────────────────────────────────────
-    # Homebrew formulae
+    # Brew formulae
     # ───────────────────────────────────────────────────────────
 
     brews = [
-      # Terminal / agent workspace manager
+      # FirstMate's terminal/session backend.
       "herdr"
 
-      # IMPORTANT:
+      # Hardened GitHub CLI owned by Automic Vault.
       #
-      # Automic Vault hardened GitHub CLI.
-      #
-      # Do NOT also install pkgs.gh in home.nix.
-      # Do NOT enable programs.gh in home.nix.
+      # Do NOT install pkgs.gh or programs.gh in home.nix.
       {
         name = "automic-vault/isotopes/gh-cli";
         trusted = true;
@@ -232,38 +210,33 @@
 
 
     # ───────────────────────────────────────────────────────────
-    # Homebrew casks
+    # GUI / macOS casks
     # ───────────────────────────────────────────────────────────
 
     casks = [
-      # Terminal
       "wezterm"
 
-      # Claude Code
       "claude-code"
 
-      # Pi Launcher
       {
         name = "kunchenguid/tap/pi-launcher";
         trusted = true;
       }
 
-      # Automic Vault
       {
         name = "automic-vault/isotopes/automic-vault";
         trusted = true;
       }
 
-      # Browser
       "google-chrome"
     ];
   };
 
 
   # ─────────────────────────────────────────────────────────────
-  # nix-darwin state version
+  # nix-darwin compatibility version
   #
-  # Do not change this just because nix-darwin is upgraded.
+  # Do not change simply because nix-darwin updates.
   # ─────────────────────────────────────────────────────────────
 
   system.stateVersion = 6;

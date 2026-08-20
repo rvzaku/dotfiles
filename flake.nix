@@ -1,39 +1,99 @@
 {
-  description = "dotfiles";
+  description = "rvzaku macOS dotfiles — based on kunchenguid/dotfiles";
 
   inputs = {
-    # Use `github:NixOS/nixpkgs/nixpkgs-26.05-darwin` to use Nixpkgs 26.05.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
-    # Use `github:nix-darwin/nix-darwin/nix-darwin-26.05` to use Nixpkgs 26.05.
-    nix-darwin.url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
-    nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
+    # ───────────────────────────────────────────────────────────
+    # Stable 26.05 stack
+    # ───────────────────────────────────────────────────────────
 
-    home-manager.url = "github:nix-community/home-manager/release-26.05";
-    home-manager.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.url =
+      "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
-    nix-homebrew.url = "github:zhaofengli/nix-homebrew";
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    home-manager = {
+      url = "github:nix-community/home-manager/release-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    nix-homebrew.url =
+      "github:zhaofengli/nix-homebrew";
+
+
+    # ───────────────────────────────────────────────────────────
+    # FirstMate
+    #
+    # FirstMate is a repository-as-distribution project rather
+    # than a normal Nix package.
+    #
+    # flake.lock pins the exact Git revision.
+    # ───────────────────────────────────────────────────────────
+
+    firstmate = {
+      url = "github:kunchenguid/firstmate";
+      flake = false;
+    };
+
+
+    # ───────────────────────────────────────────────────────────
+    # Treehouse
+    #
+    # Treehouse ships a native Nix flake.
+    # flake.lock pins the exact revision.
+    # ───────────────────────────────────────────────────────────
+
+    treehouse = {
+      url = "github:kunchenguid/treehouse";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = inputs@{ self, nix-darwin, nix-homebrew, home-manager, nixpkgs }:
+
+  outputs =
+    inputs@{
+      self,
+      nixpkgs,
+      nix-darwin,
+      nix-homebrew,
+      home-manager,
+      ...
+    }:
+
     let
-      # The one username line to change if this isn't your machine.
-      # bootstrap.sh offers to rewrite this for you if your macOS username differs.
+      # The one machine username.
       user = "rvzaku";
     in
     {
-      darwinConfigurations."mac" = nix-darwin.lib.darwinSystem {
-        specialArgs = { inherit user; };
-        modules = [
-          ./configuration.nix
-          nix-homebrew.darwinModules.nix-homebrew
-          home-manager.darwinModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.extraSpecialArgs = { inherit user; };
-            home-manager.users.${user} = import ./home.nix;
-          }
-        ];
-      };
+      darwinConfigurations.mac =
+        nix-darwin.lib.darwinSystem {
+          # Make user + flake inputs visible to configuration.nix.
+          specialArgs = {
+            inherit user inputs;
+          };
+
+          modules = [
+            ./configuration.nix
+
+            nix-homebrew.darwinModules.nix-homebrew
+
+            home-manager.darwinModules.home-manager
+
+            {
+              home-manager.useGlobalPkgs = true;
+              home-manager.useUserPackages = true;
+
+              # Make the same inputs available to home.nix.
+              home-manager.extraSpecialArgs = {
+                inherit user inputs;
+              };
+
+              home-manager.users.${user} =
+                import ./home.nix;
+            }
+          ];
+        };
     };
 }

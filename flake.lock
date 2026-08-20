@@ -17,6 +17,22 @@
         "type": "github"
       }
     },
+    "firstmate": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787204406,
+        "narHash": "sha256-xB0o+lBFxhnhLTVTXnykvPHsrIOccLpwENIGbAtC2HY=",
+        "owner": "kunchenguid",
+        "repo": "firstmate",
+        "rev": "1cb900c28faf23fe23c9bb54e63f7c3b436ea096",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kunchenguid",
+        "repo": "firstmate",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -95,10 +111,32 @@
     },
     "root": {
       "inputs": {
+        "firstmate": "firstmate",
         "home-manager": "home-manager",
         "nix-darwin": "nix-darwin",
         "nix-homebrew": "nix-homebrew",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "treehouse": "treehouse"
+      }
+    },
+    "treehouse": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787171112,
+        "narHash": "sha256-PVGvSszSOQVekCOquibzx1AJ6va2OxfMj3M99+ZOnvs=",
+        "owner": "kunchenguid",
+        "repo": "treehouse",
+        "rev": "5e3d282592dfef5e60a5027797aa917f08c6cbf0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kunchenguid",
+        "repo": "treehouse",
+        "type": "github"
       }
     }
   },
