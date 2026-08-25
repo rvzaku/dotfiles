@@ -98,7 +98,7 @@ home.stateVersion = "26.05";
 Owns system-level things:
 
 - macOS preferences
-- Hack Nerd Font
+- Hack and JetBrains Mono Nerd Fonts
 - Touch ID sudo
 - nix-homebrew
 - Homebrew formulae
@@ -607,8 +607,10 @@ topgrade --dry-run --config ~/.config/topgrade.toml
 # Rebuilding the Mac
 
 `rebuild.sh` resolves its own repository root, including when called from a
-different directory or through a symlink. It maintains `~/.dotfiles` as the
-stable editable source path used by Home Manager.
+different directory or through a symlink. Only `switch` points `~/.dotfiles`,
+the stable editable source path used by Home Manager, at that root; `check`
+and `build` never touch an existing `~/.dotfiles`, matching their no-mutation
+promise.
 
 After changing `configuration.nix`, `home.nix`, or the flake:
 
@@ -662,7 +664,7 @@ origin    git@github.com:rvzaku/dotfiles.git
 upstream  https://github.com/kunchenguid/dotfiles.git
 ```
 
-Optional protection:
+Required protection, enforced by `upstream-sync.sh`:
 
 ```bash
 git remote set-url --push upstream DISABLED
@@ -880,7 +882,7 @@ print -l ${(s/:/)PATH}
 - [ ] Run `nix flake check --no-build`
 - [ ] Run `./rebuild.sh`
 - [ ] Verify Starship
-- [ ] Verify Hack Nerd Font
+- [ ] Verify Hack and JetBrains Mono Nerd Fonts
 - [ ] Configure Automic Vault
 - [ ] Restore secrets into Automic Vault
 - [ ] Run `av scan --show-all`
