@@ -68,12 +68,16 @@ esac
 ROOT=$(resolve_root)
 cd "$ROOT"
 
-# This is the source path used by Home Manager's editable-file links.
-# Refuse a real directory so a rebuild cannot hide a checkout or overwrite it.
-if [ -e "$HOME/.dotfiles" ] && [ ! -L "$HOME/.dotfiles" ]; then
-  fail "$HOME/.dotfiles exists and is not a symlink; move it aside before rebuilding"
-fi
-ln -sfn "$ROOT" "$HOME/.dotfiles"
+# This is the source path used by Home Manager's editable-file links, which
+# are only realized at activation time. Point it at ROOT solely on switch so
+# that check/build, which the usage text promises perform no mutation, never
+# repoint an existing ~/.dotfiles away from whatever it currently targets.
+link_dotfiles() {
+  if [ -e "$HOME/.dotfiles" ] && [ ! -L "$HOME/.dotfiles" ]; then
+    fail "$HOME/.dotfiles exists and is not a symlink; move it aside before rebuilding"
+  fi
+  ln -sfn "$ROOT" "$HOME/.dotfiles"
+}
 
 require_command nix
 
@@ -101,6 +105,7 @@ case "$mode" in
     require_command darwin-rebuild
     require_command sudo
     check_flake
+    link_dotfiles
     printf '%s\n' '==> Applying .#mac with sudo'
     sudo darwin-rebuild switch --flake .#mac
     ;;
