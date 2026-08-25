@@ -46,16 +46,18 @@ fi
 echo "==> Step 4: first darwin-rebuild switch (pinned to nix-darwin-26.05)"
 # darwin-rebuild doesn't exist yet on a fresh machine, so run it straight
 # from the flake this once. After this, rebuild.sh works normally.
-# This fetches the darwin-rebuild tool from the nix-darwin-26.05 release branch,
-# not the exact flake.lock revision. The system config it applies is still pinned
-# by this repo's flake.lock.
+# Resolve darwin-rebuild through this checkout's locked nix-darwin input;
+# bootstrap must not silently use a moving channel revision.
 # sudo resets PATH to a secure default that excludes /nix/.../bin, so a
 # freshly installed `nix` would not be found under sudo even though it's
 # on PATH here. Resolve the absolute path first and invoke that instead.
 NIX_BIN="$(command -v nix)"
 # "mac" is the flake host label - if you renamed it, change it in flake.nix
 # and rebuild.sh too.
-sudo "$NIX_BIN" run github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
+sudo "$NIX_BIN" run \
+  --no-write-lock-file \
+  --inputs-from "$DIR" \
+  nix-darwin#darwin-rebuild -- \
   switch --flake ~/.dotfiles#mac
 # If this still fails with "nix: command not found", open a new terminal
 # (Determinate adds nix to new shells' PATH) and re-run ./bootstrap.sh.
