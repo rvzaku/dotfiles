@@ -98,7 +98,7 @@ home.stateVersion = "26.05";
 Owns system-level things:
 
 - macOS preferences
-- Hack Nerd Font
+- Hack and JetBrains Mono Nerd Fonts
 - Touch ID sudo
 - nix-homebrew
 - Homebrew formulae
@@ -124,6 +124,36 @@ Owns my user environment:
 - `nh`
 - Topgrade
 - normal CLI tools
+
+## Captain overlay inventory
+
+Kun's `flake.nix`, `configuration.nix`, and `home.nix` remain the source-shaped
+base. The intentional overlay is:
+
+- `flake.nix` / `flake.lock`: the rvzaku identity, the locked 26.05 release
+  family, pinned FirstMate and Treehouse inputs, and the fixed-output no-mistakes
+  release package. No normal rebuild updates the lock.
+- `configuration.nix`: captain macOS defaults, Touch ID sudo, fonts, and the
+  declared Homebrew GUI/Brew-only tools. Automic Vault owns the isotope tap and
+  hardened `gh`; `cleanup = "zap"` remains deliberate. Homebrew does not auto
+  update or upgrade during a rebuild.
+- `home.nix`: captain CLI/editor packages, Backpass/FirstMate workspace
+  integrations, Treehouse and no-mistakes, the pinned AXI companion manifest,
+  the editable repository links, AV wrappers, and Topgrade orchestration. A
+  package has one owner; fonts are system-owned in `configuration.nix` rather
+  than duplicated in Home Manager.
+- `rebuild.sh` and `upstream-sync.sh`: the safe root-resolving check/build/
+  switch boundary and the non-destructive upstream fetch/merge workflow.
+- `README.md` and `home/.*/`: the captain's operational documentation and
+  current workspace customizations (Herdr, Pi, Neovim, Claude, and the
+  preserved Herdr Pi integration extension).
+
+The unavoidable divergence from Kun is the personal user/host identity and
+these explicitly requested integrations. The current handoff also contained
+captain-local lock/config/tool changes; they were restored before repair and
+remain accounted for in the branch rather than being regenerated or dropped.
+No `fic` command or file exists in the repository or configured shell; the
+request was interpreted as “fix”, not as permission to invent a command.
 
 ---
 
@@ -519,52 +549,80 @@ So:
 
 # Topgrade
 
-Topgrade must **not** independently manage Home Manager or Homebrew.
+Topgrade is owned by Home Manager (`home.packages`), and its configuration is
+owned by `home.nix`. It must **not** independently manage Home Manager,
+Homebrew, Nix, or the pinned FirstMate AXI tools.
 
-Those already belong to nix-darwin.
+The generated `topgrade.toml` disables those overlapping steps and disables
+Topgrade self-update and the global npm update step. The custom command is an
+absolute, declared `dotfiles-update` binary, so it does not depend on Topgrade's
+current directory or recursively invoke Topgrade.
 
-The managed config disables:
+Normal rebuilds never update flake inputs:
 
-```toml
-[misc]
-disable = [
-  "home_manager",
-  "brew_formula",
-  "brew_cask",
-]
+```bash
+./rebuild.sh check   # evaluate only
+./rebuild.sh build   # build only
+./rebuild.sh switch  # check, then explicitly apply with sudo
 ```
 
-For Topgrade 17.5.1 the correct Git option is:
+Topgrade's one convenient update command is a separate, guarded action. It
+refuses a dirty checkout, fetches and safely integrates upstream source on an
+isolated sync branch, updates the lock file, validates and builds, reconciles
+the pinned FirstMate/AXI manifest, and only then reaches the explicit switch
+boundary:
+
+```bash
+topgrade --custom-commands 'Dotfiles inputs + rebuild'
+```
+
+The command is also available directly as `dotfiles-update`. A clean tree can
+take this fast path. A dirty tree or merge conflict stops before lock updates,
+package updates, or activation; preserve/resolve it with the upstream workflow
+below, then rerun the command. A successful run deliberately leaves the
+reviewable lock/source branch changes uncommitted; inspect and commit them
+before the next update, rather than letting the helper rewrite history.
+
+The AXI companion versions are explicit constants in `home.nix`. Home Manager
+installs an exact version only when the controlled npm prefix is missing or
+mismatched; it does not use `@latest`. To intentionally change a tool version,
+change that constant and review the resulting rebuild.
+
+For the installed Topgrade 17.9.0, the correct Git option is:
 
 ```toml
 [git]
 pull_predefined = false
 ```
 
-Not:
-
-```toml
-predefined_repos = false
-```
-
-The custom Nix update path is:
+Not `predefined_repos = false`. Validate the generated config without
+upgrading anything with:
 
 ```bash
-nix flake update
-./rebuild.sh
+topgrade --dry-run --config ~/.config/topgrade.toml
 ```
 
 ---
 
 # Rebuilding the Mac
 
+`rebuild.sh` resolves its own repository root, including when called from a
+different directory or through a symlink. Only `switch` points `~/.dotfiles`,
+the stable editable source path used by Home Manager, at that root; `check`
+and `build` never touch an existing `~/.dotfiles`, matching their no-mutation
+promise.
+
 After changing `configuration.nix`, `home.nix`, or the flake:
 
 ```bash
-cd ~/dotfiles
-nix flake check --no-build
-./rebuild.sh
+./rebuild.sh check   # nix flake check --no-build + darwin evaluation
+./rebuild.sh build   # safe darwin build, no activation
+./rebuild.sh switch  # explicit privileged system switch (default mode)
 ```
+
+A failed check or evaluation exits before `sudo` is called. Tests and CI use
+`check` or `build`; they never switch the live system. The normal `switch` path
+uses the locked `flake.lock` and does not run `nix flake update`.
 
 After shell changes:
 
@@ -572,13 +630,8 @@ After shell changes:
 exec zsh
 ```
 
-`nh` is also available:
-
-```bash
-nh darwin switch
-```
-
-but `./rebuild.sh` remains my normal path.
+`nh` is also available for deliberate interactive use, but `./rebuild.sh`
+remains the normal path.
 
 ---
 
@@ -611,7 +664,7 @@ origin    git@github.com:rvzaku/dotfiles.git
 upstream  https://github.com/kunchenguid/dotfiles.git
 ```
 
-Optional protection:
+Required protection, enforced by `upstream-sync.sh`:
 
 ```bash
 git remote set-url --push upstream DISABLED
@@ -621,96 +674,93 @@ That prevents accidental pushes to Kun.
 
 ---
 
-# Getting Kun's updates
+# Getting Kun's updates safely
 
-ELI5:
+The fork/upstream boundary is intentional:
 
 ```text
-Kun adds new changes
-       ↓
-I download them
-       ↓
-Git puts my changes back on top
-       ↓
-I test everything
-       ↓
-I push to my fork
+origin   git@github.com:rvzaku/dotfiles.git       (pushable fork)
+upstream https://github.com/kunchenguid/dotfiles.git (fetch only)
 ```
 
-Commands:
+`upstream` has its push URL set to `DISABLED`. Never replace it with a
+pushable URL. The safe workflow never rewrites `main`, never force-pushes, and
+never attempts automatic conflict resolution.
+
+First preserve dirty work explicitly. Run this before any fetch or branch
+operation when `git status --porcelain` is non-empty:
 
 ```bash
-cd ~/dotfiles
+cd ~/.dotfiles
+snapshot=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-preserve.XXXXXX")
+git diff --binary > "$snapshot/tracked-working.patch"
+git ls-files --others --exclude-standard -z \
+  | tar --null --files-from=- -czf "$snapshot/untracked-working.tgz"
+git status --short --untracked-files=all
+printf 'Preserved local work in %s; do not delete it.\n' "$snapshot"
+```
 
+After reviewing and deliberately committing or restoring that work, use an
+isolated sync branch:
+
+```bash
+cd ~/.dotfiles
+git fetch --prune upstream
+git switch -c "sync/upstream-$(date +%Y%m%d-%H%M%S)"
+git merge --no-ff --no-edit upstream/main
+```
+
+A merge conflict is a stop condition. Inspect each conflict and resolve it
+manually, or abort without losing the branch:
+
+```bash
 git status
-git fetch upstream
-
-git log --oneline HEAD..upstream/main
-git diff HEAD...upstream/main
-
-git rebase upstream/main
+git diff --merge
+git merge --abort
 ```
 
-Then test:
+Then run the safe checks, review the diff, and publish only the named branch:
 
 ```bash
-nix flake check --no-build
-./rebuild.sh
+./rebuild.sh check
+./rebuild.sh build
 av scan --show-all
+git push --set-upstream origin HEAD
 ```
 
-Then update my fork:
-
-```bash
-git push --force-with-lease origin main
-```
-
-Use:
-
-```text
---force-with-lease
-```
-
-after rebasing.
-
-Do not normally use plain:
-
-```text
---force
-```
+Do not push `main`, do not use `--force` or `--force-with-lease`, and do not
+run `git reset --hard`, `git clean`, or a rebase as a shortcut around a
+conflict. This branch/merge process keeps captain-local commits intact while
+making upstream divergence and conflicts visible.
 
 ---
 
-# If rebase has conflicts
+# If an upstream merge has conflicts
 
 Check:
 
 ```bash
 git status
+git diff --merge
 ```
 
-Open the conflicting file:
+Open each conflicting file, resolve it deliberately, then stage the resolved
+files and commit the merge on the isolated sync branch:
 
 ```bash
 nvim home.nix
-```
-
-Resolve the conflict, then:
-
-```bash
 git add home.nix
-git rebase --continue
+git commit
 ```
 
-Repeat if needed.
-
-Cancel everything safely with:
+If the conflict is not understood, cancel without discarding local commits:
 
 ```bash
-git rebase --abort
+git merge --abort
 ```
 
-Git `rerere` is enabled so repeated conflict resolutions can be remembered.
+Git `rerere` is enabled so repeated conflict resolutions can be remembered,
+but it is never a substitute for reviewing a conflict.
 
 ---
 
@@ -719,19 +769,18 @@ Git `rerere` is enabled so repeated conflict resolutions can be remembered.
 Always check:
 
 ```bash
-git status
+git status --short --untracked-files=all
 git diff
 git diff --cached
 ```
 
-Make sure no secret accidentally entered Git.
-
-Then:
+Make sure no secret, runtime state, or generated machine-specific file entered
+Git. Stage only the intended paths, then publish the current feature branch:
 
 ```bash
-git add .
+git add path/to/intended-file ...
 git commit -m "Describe the change"
-git push
+git push --set-upstream origin HEAD
 ```
 
 ---
@@ -770,7 +819,41 @@ gh --version
 ```bash
 av --version
 av scan --show-all
+av doctor
 ```
+
+The repository declares the Automic Vault isotope tap/packages and keeps AV as
+the owner of secrets and hardened `gh`; it does not store secret values.
+The 2026-08-25 bounded audit used only `av --version`, `av --help`,
+`av detectors --json`, `av hardeners --json`, `av scan --json`,
+`av scan --show-all`, `av doctor`, and per-tool `av doctor gh/codex/brew`.
+The final host scan reported 9 findings: Atuin, Codex, GitHub CLI keychain,
+Homebrew, OpenSSH, two Vercel CLI locations, and shell/path findings. No
+`save`, `inject`, `harden`, `unharden`, `open`, rotation, deletion, or
+credential migration was run.
+
+Observed findings and boundaries:
+
+- The Atuin key, Codex auth, SSH key, and Vercel auth files are live runtime
+  state outside this repository. AV documents the Atuin finding as report-only;
+  fixing the others requires a captain-only login, reauthentication, or key
+  migration. No values were read or changed.
+- The shell finding was traced to the Home Manager-generated zshrc. The AV
+  `secret-*` wrappers are now functions rather than alias assignments, and the
+  declared path puts protected paths before user-writable prefixes while
+  keeping the AV Homebrew stub and isotope ownership boundary explicit. A
+  fresh Nix-rendered zshrc plus a protected-path scan produced no bash/zsh
+  finding; the live shell still requires the captain's rebuild/restart.
+- The Homebrew finding and `av doctor brew` report require the captain to run
+  the supported `av harden brew` flow as the desktop user; that action changes
+  live ownership and was intentionally not run here. `av doctor gh` also needs
+  the rebuilt PATH to place the signed isotope first, and `av doctor codex`
+  requires a signed standalone/cask Codex install. These are host-only checks,
+  not repository failures.
+
+This is a bounded configuration audit, not a claim that all vulnerabilities
+are absent. Re-run the supported scan after a live rebuild and address any
+new finding at its documented boundary.
 
 ### Font
 
@@ -799,7 +882,7 @@ print -l ${(s/:/)PATH}
 - [ ] Run `nix flake check --no-build`
 - [ ] Run `./rebuild.sh`
 - [ ] Verify Starship
-- [ ] Verify Hack Nerd Font
+- [ ] Verify Hack and JetBrains Mono Nerd Fonts
 - [ ] Configure Automic Vault
 - [ ] Restore secrets into Automic Vault
 - [ ] Run `av scan --show-all`

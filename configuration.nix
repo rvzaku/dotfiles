@@ -5,30 +5,26 @@
 }:
 
 {
-  # ─────────────────────────────────────────────────────────────
-  # Nix
-  #
-  # Determinate Nix owns the Nix daemon.
-  # nix-darwin must not manage another daemon.
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # NIX
+  # ============================================================
 
+  # Determinate Nix owns the daemon.
+  # nix-darwin must not attempt to manage another daemon.
   nix.enable = false;
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Nixpkgs
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # NIXPKGS
+  # ============================================================
 
   nixpkgs = {
     config.allowUnfree = true;
-
     hostPlatform = "aarch64-darwin";
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # User
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # USER
+  # ============================================================
 
   system.primaryUser = user;
 
@@ -36,28 +32,24 @@
     home = "/Users/${user}";
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # nix-darwin compatibility
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # NIX-DARWIN
+  # ============================================================
 
   system.stateVersion = 6;
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Fonts
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # FONTS
+  # ============================================================
 
   fonts.packages = with pkgs; [
     nerd-fonts.hack
+    nerd-fonts.jetbrains-mono
   ];
 
-
-  # ─────────────────────────────────────────────────────────────
-  # sudo
-  #
-  # Touch ID + no long-lived sudo authentication cache.
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # SUDO / TOUCH ID
+  # ============================================================
 
   security.pam.services.sudo_local = {
     enable = true;
@@ -68,16 +60,16 @@
     Defaults timestamp_timeout=0
   '';
 
-
-  # ─────────────────────────────────────────────────────────────
-  # macOS
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # macOS DEFAULTS
+  # ============================================================
 
   system.defaults = {
     NSGlobalDomain = {
       AppleInterfaceStyle = "Dark";
 
       KeyRepeat = 2;
+
       InitialKeyRepeat = 15;
 
       _HIHideMenuBar = true;
@@ -99,10 +91,9 @@
     };
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # nix-homebrew
-  # ─────────────────────────────────────────────────────────────
+  # ============================================================
+  # NIX-HOMEBREW
+  # ============================================================
 
   nix-homebrew = {
     enable = true;
@@ -114,17 +105,16 @@
     mutableTaps = true;
   };
 
-
-  # ─────────────────────────────────────────────────────────────
-  # Homebrew
+  # ============================================================
+  # HOMEBREW
   #
-  # Homebrew is for:
-  # - macOS GUI applications
-  # - things that genuinely need Brew
+  # Homebrew owns:
+  # - GUI applications
+  # - Brew-only tools
   # - Automic Vault isotopes
   #
-  # Normal CLI tools stay in Home Manager.
-  # ─────────────────────────────────────────────────────────────
+  # Normal CLI tooling stays in Home Manager.
+  # ============================================================
 
   homebrew = {
     enable = true;
@@ -133,24 +123,18 @@
 
     enableZshIntegration = true;
 
-
     global = {
-      # Random manual brew commands should not unexpectedly mutate
-      # package versions.
       autoUpdate = false;
     };
 
-
     onActivation = {
-      # During our declarative switch, refresh Brew metadata.
-      autoUpdate = true;
+      # Rebuilds apply the declared state; they do not advance package versions.
+      # Update Homebrew explicitly as part of an intentional update workflow.
+      autoUpdate = false;
+      upgrade = false;
 
-      # Keep declared Brew software current.
-      upgrade = true;
-
-      # VERY INTENTIONAL.
-      #
-      # Anything Brew-installed but not declared below is removed.
+      # INTENTIONAL:
+      # Remove Brew software not declared here.
       cleanup = "zap";
 
       extraEnv = {
@@ -159,7 +143,6 @@
         HOMEBREW_NO_UPDATE_REPORT_NEW = "1";
       };
     };
-
 
     taps = [
       {
@@ -171,22 +154,29 @@
         name = "kunchenguid/tap";
         trusted = true;
       }
-    ];
 
-
-    brews = [
-      # Herdr backend for FirstMate.
-      "herdr"
-
-      # Automic Vault hardened GitHub CLI.
-      #
-      # DO NOT also enable programs.gh in home.nix.
       {
-        name = "automic-vault/isotopes/gh-cli";
+        name = "jundot/omlx";
+        clone_target = "https://github.com/jundot/omlx";
         trusted = true;
       }
     ];
 
+    brews = [
+      "herdr"
+      "vercel-cli"
+      "huggingface-cli"
+
+      {
+        name = "automic-vault/isotopes/gh-cli";
+        trusted = true;
+      }
+
+      {
+        name = "jundot/omlx/omlx";
+        trusted = true;
+      }
+    ];
 
     casks = [
       "wezterm"

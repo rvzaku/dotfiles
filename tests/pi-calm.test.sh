@@ -103,7 +103,9 @@ test_zero_coupling_and_state_file() {
   local pat_watch="fm_""watch_arm_pi" pat_op="FIRSTMATE""_OP" pat_dash="fm-""calm"
 
   # The operational marker and upstream runtime surfaces must not exist anywhere.
-  for file in $source_files "$ROOT/tests/pi-calm.test.sh" "$ROOT/tests/lib.sh" "$ROOT/README.md" "$ROOT/home.nix"; do
+  # home.nix intentionally contains the captain's FirstMate integration;
+  # this test only guards Pi Calm's own source and its public documentation.
+  for file in $source_files "$ROOT/tests/pi-calm.test.sh" "$ROOT/tests/lib.sh" "$ROOT/README.md"; do
 
     assert_not_contains "$(cat "$file")" "$pat_fm_home" "$file mentions $pat_fm_home"
     assert_not_contains "$(cat "$file")" "$pat_fm_root" "$file mentions $pat_fm_root"
@@ -113,9 +115,11 @@ test_zero_coupling_and_state_file() {
     assert_not_contains "$(cat "$file")" "$pat_dash" "$file mentions $pat_dash"
     assert_not_contains "$(cat "$file")" "$separator" "$file contains the operational separator"
   done
-  # The upstream project name may appear only in a license attribution.
+  # The Pi Calm extension may mention its upstream only in a license
+  # attribution. Repository-level FirstMate integration is intentional and is
+  # outside this extension's coupling boundary.
   local attribution_name="First""mate"
-  license_hits=$(grep -rni "$attribution_name" "$CALM_DIR" "$ROOT/README.md" "$ROOT/home.nix" 2>/dev/null | grep -v "Adapted from" || true)
+  license_hits=$(grep -rni "$attribution_name" "$CALM_DIR" 2>/dev/null | grep -v "Adapted from" || true)
   [ -z "$license_hits" ] || fail "unexpected upstream references outside license attribution: $license_hits"
   grep -q "MIT License" "$CALM_DIR/LICENSE" || fail "calm LICENSE lost the MIT permission text"
   grep -q "Copyright (c) 2026 Kun Chen" "$CALM_DIR/LICENSE" || fail "calm LICENSE lost the copyright notice"

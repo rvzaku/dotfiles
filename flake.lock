@@ -3,16 +3,16 @@
     "brew-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1786348930,
-        "narHash": "sha256-bCQJkbgsAMDp5HQystZLCq11UHiyEuoWbxKulAPYrh8=",
+        "lastModified": 1786945682,
+        "narHash": "sha256-VBESSoJccikdhxh3vp3SQeG7cZXTOulMvVkoSqNDEhs=",
         "owner": "Homebrew",
         "repo": "brew",
-        "rev": "3ecc9eff23feebf1bc73846d74e14a122c93b66f",
+        "rev": "5b90e281d4e0c8fbd6ca4d8358276fb305b8d0bd",
         "type": "github"
       },
       "original": {
         "owner": "Homebrew",
-        "ref": "6.0.16",
+        "ref": "6.0.18",
         "repo": "brew",
         "type": "github"
       }
@@ -20,11 +20,11 @@
     "firstmate": {
       "flake": false,
       "locked": {
-        "lastModified": 1787204406,
-        "narHash": "sha256-xB0o+lBFxhnhLTVTXnykvPHsrIOccLpwENIGbAtC2HY=",
+        "lastModified": 1787563994,
+        "narHash": "sha256-+Terz8ZusvivkBt1HtgnE31H7WGAyYwHGsbaydoPILk=",
         "owner": "kunchenguid",
         "repo": "firstmate",
-        "rev": "1cb900c28faf23fe23c9bb54e63f7c3b436ea096",
+        "rev": "8fa0505e48a155da78a9aeeb50911719dc558710",
         "type": "github"
       },
       "original": {
@@ -40,11 +40,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787146702,
-        "narHash": "sha256-YbRcLdU/yK4gWsQg7V8WTKZHfXL33g8+wSFUX3wyevs=",
+        "lastModified": 1787377438,
+        "narHash": "sha256-Sxu1NLTD/Ern6hFGLlZmtKCSct3YQXZI/lls8RE1XeM=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "173b7e8d40fdc8c296a9c99854314f17a3a1704c",
+        "rev": "65258d5c65a250189fde2e35f490d15e064c4c62",
         "type": "github"
       },
       "original": {
@@ -80,11 +80,11 @@
         "brew-src": "brew-src"
       },
       "locked": {
-        "lastModified": 1786686423,
-        "narHash": "sha256-8q3WdB8o3VUI7rOz1OXfioXIaaWbFTAxRJAkWLlfc0s=",
+        "lastModified": 1787330919,
+        "narHash": "sha256-LslMncqN7uOOH5S88WZtO/EVt2HwD8ltUnfyANk+mC0=",
         "owner": "zhaofengli",
         "repo": "nix-homebrew",
-        "rev": "ccabf79a6b9845eb72b51ea1d9c7ce3446350df3",
+        "rev": "b00218e4aec0e5bf07d61a0bb13f842faa582d7b",
         "type": "github"
       },
       "original": {
@@ -95,33 +95,17 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1786920013,
-        "narHash": "sha256-tlbRqzZ3suDUO3vyR0QFBk0TrxJiRP50t7VWfHhtVrw=",
+        "lastModified": 1787626384,
+        "narHash": "sha256-2YdJsk8iydhQVgz12pmfWFVtUBEv2Zak6TdgoaDi/+Y=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "33da5f36e599b50aa7dbbfacb718254423b18354",
+        "rev": "3dff45fe84c7cc09bff396fdc7b39d0ceba10656",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
         "ref": "nixpkgs-26.05-darwin",
         "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "no-mistakes": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1787246032,
-        "narHash": "sha256-Mkq6o4PfmdU2IWOWOI+bUgj0f7jmei/63TokcBh/rz8=",
-        "owner": "kunchenguid",
-        "repo": "no-mistakes",
-        "rev": "abe6da6559c9a60ab5796ce2be6e6a42efd1dc56",
-        "type": "github"
-      },
-      "original": {
-        "owner": "kunchenguid",
-        "repo": "no-mistakes",
         "type": "github"
       }
     },
@@ -132,7 +116,6 @@
         "nix-darwin": "nix-darwin",
         "nix-homebrew": "nix-homebrew",
         "nixpkgs": "nixpkgs",
-        "no-mistakes": "no-mistakes",
         "treehouse": "treehouse"
       }
     },
@@ -143,15 +126,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787171112,
-        "narHash": "sha256-PVGvSszSOQVekCOquibzx1AJ6va2OxfMj3M99+ZOnvs=",
+        "lastModified": 1785475217,
+        "narHash": "sha256-nybPc6SXPxw5MZIFrjrmJDno9aMH2R4uZz0U8rayAOo=",
         "owner": "kunchenguid",
         "repo": "treehouse",
-        "rev": "5e3d282592dfef5e60a5027797aa917f08c6cbf0",
+        "rev": "939cb59ba0bd69036ae52fc19b5b41e0a3f167d3",
         "type": "github"
       },
       "original": {
         "owner": "kunchenguid",
+        "ref": "v2.1.1",
         "repo": "treehouse",
         "type": "github"
       }
