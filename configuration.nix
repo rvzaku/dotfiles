@@ -11,6 +11,11 @@
   users.users.${user} = {
     home = "/Users/${user}";
   };
+
+
+  security.pam.services.sudo_local = {
+    enable = true; touchIdAuth = true;
+  };
   system.stateVersion = 6;
   system.defaults = {
     NSGlobalDomain = {
@@ -34,12 +39,23 @@
     onActivation.cleanup = "zap";  # remove anything not listed here
     onActivation.autoUpdate = true;
     onActivation.extraFlags = [ "--force" ];
-    brews = [
+  
+ taps = [
+    {
+      name = "automic-vault/isotopes";
+      trusted = true;
+    }
+      ];
+
+  brews = [
       "herdr"
+      
     ];
     casks = [
       "wezterm"
       "claude-code"
+      "google-chrome"
+      "kunchenguid/tap/pi-launcher" 
     ];
   };
 }
