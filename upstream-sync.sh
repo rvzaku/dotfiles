@@ -78,8 +78,11 @@ if git merge-base --is-ancestor "$upstream_ref" HEAD; then
 fi
 
 if git merge-base --is-ancestor HEAD "$upstream_ref"; then
-  printf '==> Fast-forwarding %s to %s\n' "$branch" "$upstream_ref"
+  printf '==> Creating isolated sync branch for %s\n' "$upstream_ref"
+  sync_branch="sync/upstream-$(date +%Y%m%d-%H%M%S)"
+  git switch -c "$sync_branch"
   git merge --ff-only "$upstream_ref"
+  printf '==> Upstream fast-forwarded on %s; review before publishing\n' "$sync_branch"
   exit 0
 fi
 
@@ -88,13 +91,29 @@ printf '==> Creating isolated sync branch %s\n' "$sync_branch"
 git switch -c "$sync_branch"
 
 if ! git merge --no-ff --no-edit "$upstream_ref"; then
-  cat >&2 <<EOF
+  # Do not leave the operator in an unmerged index. The new sync branch is
+  # retained for inspection, while the checkout itself returns to a clean,
+  # recoverable state with every local commit intact.
+  if git merge --abort >/dev/null 2>&1; then
+    cat >&2 <<EOF
 upstream-sync.sh: upstream changes conflict on $sync_branch.
-No conflict was auto-resolved. Resolve manually, or abort safely:
+No conflict was auto-resolved and the merge was safely aborted.
+The clean sync branch is checked out for review. Resolve it manually, or
+return to the previous branch after inspection:
+  git status
+  git diff "$branch"...HEAD
+  git merge upstream/main
+EOF
+  else
+    cat >&2 <<EOF
+upstream-sync.sh: upstream changes conflict on $sync_branch.
+The merge could not be aborted automatically; no conflict was resolved.
+Inspect the checkout before continuing:
   git status
   git diff --merge
   git merge --abort
 EOF
+  fi
   exit 2
 fi
 

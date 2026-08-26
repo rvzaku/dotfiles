@@ -82,7 +82,9 @@ home.stateVersion = "26.05";
 ├── flake.lock
 ├── configuration.nix
 ├── home.nix
+├── rebuild
 ├── rebuild.sh
+├── dotfiles-update.sh
 ├── README.md
 └── home/
     ├── .config/
@@ -553,10 +555,11 @@ Topgrade is owned by Home Manager (`home.packages`), and its configuration is
 owned by `home.nix`. It must **not** independently manage Home Manager,
 Homebrew, Nix, or the pinned FirstMate AXI tools.
 
-The generated `topgrade.toml` disables those overlapping steps and disables
-Topgrade self-update and the global npm update step. The custom command is an
-absolute, declared `dotfiles-update` binary, so it does not depend on Topgrade's
-current directory or recursively invoke Topgrade.
+The generated `topgrade.toml` disables those overlapping steps, including
+Home Manager, Homebrew, Nix, Cargo, Node, and Bun package updates. It also
+disables Topgrade self-update. The custom command is an absolute, declared
+`dotfiles-update` binary, so it does not depend on Topgrade's current directory
+or recursively invoke Topgrade.
 
 Normal rebuilds never update flake inputs:
 
@@ -568,27 +571,28 @@ Normal rebuilds never update flake inputs:
 
 Topgrade's one convenient update command is a separate, guarded action. It
 refuses a dirty checkout, fetches and safely integrates upstream source on an
-isolated sync branch, updates the lock file, validates and builds, reconciles
-the pinned FirstMate/AXI manifest, and only then reaches the explicit switch
-boundary:
+isolated sync branch, updates the lock file in a temporary candidate worktree,
+validates and builds that candidate, and only then reaches the explicit switch
+boundary. The switch activation reconciles the pinned FirstMate/AXI manifest.
 
 ```bash
 topgrade --custom-commands 'Dotfiles inputs + rebuild'
 ```
 
 The command is also available directly as `dotfiles-update`. A clean tree can
-take this fast path. A dirty tree or merge conflict stops before lock updates,
-package updates, or activation; preserve/resolve it with the upstream workflow
-below, then rerun the command. A successful run deliberately leaves the
-reviewable lock/source branch changes uncommitted; inspect and commit them
-before the next update, rather than letting the helper rewrite history.
+take this fast path. A dirty tree, fetch failure, or merge conflict stops before
+lock updates, package updates, or activation; the sync branch and local commits
+remain recoverable, and the command prints the next inspection step. A
+successful run deliberately leaves a reviewable sync branch with the upstream
+merge and an uncommitted lock update; inspect and commit it before the next
+update, rather than letting the helper rewrite history.
 
 The AXI companion versions are explicit constants in `home.nix`. Home Manager
 installs an exact version only when the controlled npm prefix is missing or
 mismatched; it does not use `@latest`. To intentionally change a tool version,
 change that constant and review the resulting rebuild.
 
-For the installed Topgrade 17.9.0, the correct Git option is:
+For the installed Topgrade 17.5.1, the correct Git option is:
 
 ```toml
 [git]
@@ -610,7 +614,7 @@ topgrade --dry-run --config ~/.config/topgrade.toml
 different directory or through a symlink. Only `switch` points `~/.dotfiles`,
 the stable editable source path used by Home Manager, at that root; `check`
 and `build` never touch an existing `~/.dotfiles`, matching their no-mutation
-promise.
+promise. `./rebuild` is a compatibility wrapper for `./rebuild.sh`.
 
 After changing `configuration.nix`, `home.nix`, or the flake:
 
@@ -619,6 +623,9 @@ After changing `configuration.nix`, `home.nix`, or the flake:
 ./rebuild.sh build   # safe darwin build, no activation
 ./rebuild.sh switch  # explicit privileged system switch (default mode)
 ```
+
+The shell alias `rebuild` and the direct `./rebuild` wrapper use the same
+explicit switch default; use `check` or `build` when you do not want activation.
 
 A failed check or evaluation exits before `sudo` is called. Tests and CI use
 `check` or `build`; they never switch the live system. The normal `switch` path

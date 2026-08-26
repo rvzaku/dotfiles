@@ -182,8 +182,8 @@ let
   # FIRSTMATE AXI TOOL RECONCILIATION
   #
   # Keep these mutable runtime tools behind one explicit, pinned manifest.
-  # `--reconcile` is used during normal activation; `--update` is the same
-  # exact-version operation exposed by the deliberate Topgrade workflow.
+  # `--reconcile` is used during normal activation; `--update` remains
+  # available for deliberate tool-only maintenance.
   # ============================================================
 
   firstmateAxiToolsUpdate = pkgs.writeShellScriptBin "firstmate-axi-update" ''
@@ -242,42 +242,8 @@ let
   # ============================================================
 
   dotfilesUpdate = pkgs.writeShellScriptBin "dotfiles-update" ''
-    set -euo pipefail
-
-    if ! command -v git >/dev/null 2>&1; then
-      echo "dotfiles-update: git is required" >&2
-      exit 127
-    fi
-    if ! command -v nix >/dev/null 2>&1; then
-      echo "dotfiles-update: Determinate Nix is required" >&2
-      exit 127
-    fi
-
-    cd "${dotfiles}"
-
-    echo
-    echo "==> Fetching and safely integrating approved upstream source"
-    ./upstream-sync.sh
-
-    echo
-    echo "==> Updating pinned Nix inputs"
-    nix flake update
-
-    echo
-    echo "==> Validating and building without activation"
-    ./rebuild.sh --check
-    ./rebuild.sh --build
-
-    echo
-    echo "==> Reconciling pinned FirstMate AXI tools"
-    "${firstmateAxiToolsUpdate}/bin/firstmate-axi-update" --update
-
-    echo
-    echo "==> Applying the explicitly documented switch boundary"
-    ./rebuild.sh --switch
-
-    echo
-    echo "==> Done"
+    export DOTFILES_ROOT="${dotfiles}"
+    exec "${dotfiles}/dotfiles-update.sh" "$@"
   '';
 
 in
@@ -575,7 +541,7 @@ in
       co = "codex --full-auto";
 
       # Nix
-      rebuild = "${dotfiles}/rebuild.sh";
+      rebuild = "${dotfiles}/rebuild";
       upgrade = "dotfiles-update";
 
       # FirstMate
@@ -846,6 +812,7 @@ in
         "brew_formula",
         "brew_cask",
         "cargo",
+        "bun_packages",
         "containers",
         "nix",
         "nix_helper",

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Verify the documented upstream workflow preserves local commits and stops on conflicts.
+# Verify the documented upstream workflow preserves local commits and leaves
+# conflict failures in a clean, recoverable sync branch.
 set -euo pipefail
 
 # shellcheck disable=SC1091
@@ -72,17 +73,18 @@ conflict_local=$(git -C "$conflict_repo" rev-parse HEAD)
 commit_file "$conflict_seed" upstream 'upstream'
 git -C "$conflict_seed" push -q origin main
 
-if "$conflict_repo/upstream-sync.sh" >/dev/null 2>&1; then
+if conflict_output=$("$conflict_repo/upstream-sync.sh" 2>&1); then
   fail 'conflicting upstream merge unexpectedly succeeded'
 fi
-git -C "$conflict_repo" status --porcelain | grep -q '^UU README.md$' \
-  || fail 'conflicting merge did not remain explicit'
-git -C "$conflict_repo" merge --abort
-git -C "$conflict_repo" rev-parse HEAD | grep -qx "$conflict_local" \
-  || fail 'merge abort dropped the captain commit'
 [ "$(git -C "$conflict_repo" status --porcelain)" = '' ] \
-  || fail 'merge abort left the fixture dirty'
-pass 'conflicts stop explicitly and merge abort preserves local work'
+  || fail 'conflicting merge left the fixture dirty'
+git -C "$conflict_repo" rev-parse HEAD | grep -qx "$conflict_local" \
+  || fail 'conflict handling dropped the captain commit'
+conflict_branch=$(git -C "$conflict_repo" branch --show-current)
+[ "$conflict_branch" != main ] || fail 'conflicting upstream merge stayed on the default branch'
+assert_contains "$conflict_output" 'safely aborted' \
+  'conflict handling did not explain that the merge was aborted'
+pass 'conflicts stop explicitly on a clean sync branch and preserve local work'
 
 IFS='|' read -r dirty_repo _dirty_seed _dirty_upstream <<EOF
 $(make_fixture "$root/dirty")
