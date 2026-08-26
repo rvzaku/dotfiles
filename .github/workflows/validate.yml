@@ -1,0 +1,43 @@
+name: Validate dotfiles
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Shell tests and Nix evaluation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y shellcheck
+
+      - name: Validate shell scripts
+        run: |
+          bash -n rebuild rebuild.sh dotfiles-update.sh upstream-sync.sh tests/*.test.sh tests/lib.sh
+          shellcheck rebuild rebuild.sh dotfiles-update.sh upstream-sync.sh tests/*.test.sh tests/lib.sh
+
+      - name: Run behavior tests
+        run: |
+          set -euo pipefail
+          for test in tests/*.test.sh; do
+            "$test"
+          done
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@33c9ab3ef95cd57c164d9d6eb1f9a46338538d41
+
+      - name: Check locked flake
+        run: nix flake check --no-build .
+
+      - name: Evaluate Darwin build
+        run: nix build .#darwinConfigurations.mac.system --dry-run
