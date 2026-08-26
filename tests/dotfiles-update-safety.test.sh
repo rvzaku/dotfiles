@@ -24,7 +24,7 @@ make_fixture() {
   local repo="$root/repo"
 
   mkdir -p "$root"
-  git init --bare -q "$upstream"
+  git init --bare -q -b main "$upstream"
   git init -q -b main "$seed"
   commit_file "$seed" base 'base'
   git -C "$seed" remote add origin "$upstream"
