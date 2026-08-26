@@ -718,3 +718,9 @@ test_rendering_adapters_and_tool_shells
 test_working_ship_and_lifecycle
 test_collapsed_thinking_degradation
 test_real_pi_tui_smoke
+
+# The tests above end on conditional skip/return paths whose own exit status
+# is not the script's pass/fail signal; only fail() (which calls exit 1)
+# should determine failure. Force a deterministic success status here so the
+# script's own exit code never depends on which branch the last test took.
+:

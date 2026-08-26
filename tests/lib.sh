@@ -44,6 +44,7 @@ dotfiles_test_cleanup() {
   for d in "${DOTFILES_TEST_CLEANUP_DIRS[@]:-}"; do
     [ -n "$d" ] && rm -rf "$d"
   done
+  return 0
 }
 
 dotfiles_test_tmproot() {
