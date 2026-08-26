@@ -15,6 +15,17 @@ DOTFILES_TEST_LIB_SOURCED=1
 # shellcheck disable=SC2034
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Give every git command a deterministic identity, including commits made by
+# production scripts (upstream-sync.sh's merge, etc.) that intentionally rely
+# on the operator's own git config rather than passing -c themselves. Without
+# this, those commits fall back to git's GECOS-derived auto-identity, which
+# exists on a developer's macOS account but is commonly absent on CI runners,
+# turning "git merge --no-ff" into a hard failure there and nowhere else.
+export GIT_AUTHOR_NAME=dotfiles-test
+export GIT_AUTHOR_EMAIL=dotfiles-test@example.invalid
+export GIT_COMMITTER_NAME=dotfiles-test
+export GIT_COMMITTER_EMAIL=dotfiles-test@example.invalid
+
 fail() {
   printf 'not ok - %s\n' "$1" >&2
   exit 1
