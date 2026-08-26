@@ -1,5 +1,15 @@
 # My macOS Dotfiles
 
+<p align="center">
+  <a href="https://discord.gg/Wsy2NpnZDu"
+    ><img
+      alt="Discord"
+      src="https://img.shields.io/discord/1439901831038763092?style=flat-square&label=discord"
+  /></a>
+</p>
+
+Watch the walkthrough: https://youtu.be/5N-okeDdIuI
+
 My personal macOS development setup, based on [Kun Chen's dotfiles](https://github.com/kunchenguid/dotfiles).
 
 The idea is simple:
@@ -151,11 +161,9 @@ base. The intentional overlay is:
   preserved Herdr Pi integration extension).
 
 The unavoidable divergence from Kun is the personal user/host identity and
-these explicitly requested integrations. The current handoff also contained
-captain-local lock/config/tool changes; they were restored before repair and
-remain accounted for in the branch rather than being regenerated or dropped.
-No `fic` command or file exists in the repository or configured shell; the
-request was interpreted as “fix”, not as permission to invent a command.
+these explicitly requested integrations. Captain-local lock/config/tool
+changes remain accounted for in the branch rather than being regenerated or
+dropped.
 
 ---
 
