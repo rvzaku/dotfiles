@@ -154,8 +154,10 @@ base. The intentional overlay is:
   the editable repository links, AV wrappers, and Topgrade orchestration. A
   package has one owner; fonts are system-owned in `configuration.nix` rather
   than duplicated in Home Manager.
-- `rebuild.sh` and `upstream-sync.sh`: the safe root-resolving check/build/
-  switch boundary and the non-destructive upstream fetch/merge workflow.
+- `rebuild.sh`, `rebuild`, `upstream-sync.sh`, and `dotfiles-update.sh`: the
+  safe root-resolving check/build/switch boundary, its compatibility wrapper,
+  the non-destructive upstream fetch/merge workflow, and the guarded
+  Topgrade-invoked update path.
 - `README.md` and `home/.*/`: the captain's operational documentation and
   current workspace customizations (Herdr, Pi, Neovim, Claude, and the
   preserved Herdr Pi integration extension).
