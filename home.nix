@@ -48,6 +48,7 @@ skillsGlobals = [
 
       ${lib.concatMapStringsSep "\n" (pkg: "go install ${pkg}") goGlobals}
 
+<<<<<<< HEAD
  echo
     echo "==> Skills"
     ${lib.concatMapStringsSep "\n"
@@ -55,6 +56,21 @@ skillsGlobals = [
       skillsGlobals}
 
 
+=======
+echo
+echo "==> Skills"
+
+${lib.concatMapStringsSep "\n"
+  (skill: ''
+    npx -y skills@latest add ${skill} \
+      -g -y \
+      -a claude-code \
+      -a codex \
+      -a opencode \
+      -a pi
+  '')
+  skillsGlobals}
+>>>>>>> 1d08192 (chore: update macOS environment and managed tools)
       # no-mistakes needs its daemon refreshed after updates
       if [[ -x "$HOME/.local/bin/no-mistakes" ]]; then
         "$HOME/.local/bin/no-mistakes" daemon restart
@@ -137,6 +153,10 @@ programs.topgrade = {
       "Nix flake update" = ''
         cd "$HOME/.dotfiles" && nix flake update
       '';
+    };
+
+    post_commands = {
+      "Pi Signed" = "pi-signed update --all";
     };
 
     git = {
