@@ -49,10 +49,13 @@
 
   brews = [
       "herdr"
+      "supabase/tap/supabase"
+      "vercel-cli"
       
     ];
     casks = [
       "wezterm"
+      "codex"
       "claude-code"
       "google-chrome"
       "kunchenguid/tap/pi-launcher" 

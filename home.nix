@@ -15,7 +15,6 @@ let
   ];
 
     goGlobals = [
-    "github.com/kunchenguid/treehouse@latest"
     "github.com/kunchenguid/no-mistakes/cmd/no-mistakes@latest"
   ];
 
@@ -48,7 +47,6 @@ skillsGlobals = [
 
       ${lib.concatMapStringsSep "\n" (pkg: "go install ${pkg}") goGlobals}
 
-<<<<<<< HEAD
  echo
     echo "==> Skills"
     ${lib.concatMapStringsSep "\n"
@@ -56,7 +54,6 @@ skillsGlobals = [
       skillsGlobals}
 
 
-=======
 echo
 echo "==> Skills"
 
@@ -70,8 +67,6 @@ ${lib.concatMapStringsSep "\n"
       -a pi
   '')
   skillsGlobals}
->>>>>>> 1d08192 (chore: update macOS environment and managed tools)
-      # no-mistakes needs its daemon refreshed after updates
       if [[ -x "$HOME/.local/bin/no-mistakes" ]]; then
         "$HOME/.local/bin/no-mistakes" daemon restart
       fi
@@ -94,11 +89,13 @@ in
     fzf   # fuzzy finder
     jq        # json on the command line
     lazygit
-
+  go
 globalsUpdate
     gh
     neovim
     topgrade
+    
+  inputs.treehouse.packages.${pkgs.system}.default
     nodejs_24
     # the font everything renders in
     nerd-fonts.jetbrains-mono
@@ -164,9 +161,9 @@ programs.topgrade = {
         "~/firstmate"
         "~/dotfiles"
       ];
-
       pull_predefined = true;
       max_concurrency = 5;
+      
     };
   };
 };

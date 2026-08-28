@@ -15,7 +15,11 @@
  
 };
 
-
+# flake.nix
+inputs.treehouse = {
+  url = "github:kunchenguid/treehouse";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
 
   outputs = inputs@{ self, nix-darwin, nix-homebrew, home-manager, nixpkgs}:
     let
