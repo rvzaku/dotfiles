@@ -47,12 +47,6 @@ skillsGlobals = [
 
       ${lib.concatMapStringsSep "\n" (pkg: "go install ${pkg}") goGlobals}
 
- echo
-    echo "==> Skills"
-    ${lib.concatMapStringsSep "\n"
-      (skill: "npx -y skills@latest add ${skill} -g -y")
-      skillsGlobals}
-
 
 echo
 echo "==> Skills"
@@ -91,47 +85,96 @@ in
     lazygit
   go
 globalsUpdate
-    gh
     neovim
     topgrade
-    
-  inputs.treehouse.packages.${pkgs.system}.default
+   inputs.treehouse.packages.${pkgs.stdenv.hostPlatform.system}.default
     nodejs_24
     # the font everything renders in
     nerd-fonts.jetbrains-mono
   ];
   fonts.fontconfig.enable = true;
   home.sessionVariables.EDITOR = "nvim";
-  home.sessionPath = [
-  "$HOME/.local/bin"
-  "$HOME/.local/npm/bin"
-];
+
+
+programs.ssh = {
+  enable = true;
+  enableDefaultConfig = false;
+
+  settings = {
+    "*" = {
+      ForwardAgent = false;
+      AddKeysToAgent = "no";
+      Compression = false;
+      ServerAliveInterval = 0;
+      ServerAliveCountMax = 3;
+      HashKnownHosts = false;
+      UserKnownHostsFile = "~/.ssh/known_hosts";
+      ControlMaster = "no";
+      ControlPath = "~/.ssh/master-%r@%n:%p";
+      ControlPersist = "no";
+    };
+
+    "github.com" = {
+      HostName = "github.com";
+      User = "git";
+      IdentityFile = "~/.ssh/id_ed25519";
+      AddKeysToAgent = "yes";
+      UseKeychain = "yes";
+    };
+  };
+};
 
 programs.zoxide = {
   enable = true;
   enableZshIntegration = true;
 };
-  programs.zsh = {
+programs.zsh = {
   enable = true;
   autosuggestion.enable = true;
   syntaxHighlighting.enable = true;
 
   initContent = ''
-    export PATH="$HOME/.local/npm/bin:$PATH"
+    # Keep protected system paths ahead of user-writable paths.
+    # `typeset -U` removes duplicate PATH entries while preserving
+    # the first occurrence.
+    typeset -U path PATH
+
+    path=(
+      /usr/bin
+      /bin
+      /usr/sbin
+      /sbin
+      /usr/local/bin
+
+      /etc/profiles/per-user/$USER/bin
+      /run/current-system/sw/bin
+      /nix/var/nix/profiles/default/bin
+
+      /opt/homebrew/bin
+      /opt/homebrew/sbin
+
+      $HOME/.nix-profile/bin
+      $HOME/.local/npm/bin
+      $HOME/.local/bin
+
+      $path
+    )
+
+    export PATH
+
     bindkey '^f' autosuggest-accept
   '';
 
-    shellAliases = {
-      ".." = "cd ..";
-      add = "git add .";
-      push = "git push";
-      pull = "git pull";
-      m = "git switch main";
-      cc = "claude --dangerously-skip-permissions";
-      co = "codex --full-auto";
-    };
+  shellAliases = {
+    ".." = "cd ..";
+    add = "git add .";
+    push = "git push";
+    pull = "git pull";
+    m = "git switch main";
+    cc = "claude --dangerously-skip-permissions";
+    co = "codex --full-auto";
   };
-
+};
 programs.topgrade = {
   enable = true;
 
@@ -147,16 +190,22 @@ programs.topgrade = {
 
 
     pre_commands = {
-      "Nix flake update" = ''
-        cd "$HOME/.dotfiles" && nix flake update
-      '';
-    };
+  "Nix flake update" = ''
+    cd "$HOME/.dotfiles" &&
+    av inject +GH_TOKEN_GITHUB_COM -- /bin/sh -c \
+      'exec nix --option access-tokens "github.com=$GH_TOKEN_GITHUB_COM" flake update'
+  '';
+};
 
-    post_commands = {
-      "Pi Signed" = "pi-signed update --all";
-    };
+post_commands = {
+  "Pi Signed Extensions" =
+    "pi-signed update --extensions";
 
-    git = {
+  "Pi Signed Models" =
+    "pi-signed update --models";
+};
+
+git = {
       repos = [
         "~/firstmate"
         "~/dotfiles"
