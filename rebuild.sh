@@ -6,6 +6,25 @@ PROFILE_BIN="/etc/profiles/per-user/$USER/bin"
 
 ln -sfn "$DIR" "$HOME/.dotfiles"
 
+REAL_USER="$(id -un)"
+
+FLAKE_USER="$(
+  sed -nE 's/^[[:space:]]*user = "([^"]+)";.*/\1/p' \
+    "$DIR/flake.nix" |
+    head -n1
+)"
+
+if [[ "$FLAKE_USER" != "$REAL_USER" ]]; then
+  echo "ERROR: This machine has not been bootstrapped."
+  echo "Configured user: $FLAKE_USER"
+  echo "Current user:    $REAL_USER"
+  echo
+  echo "Run:"
+  echo "  ./bootstrap.sh"
+  exit 1
+fi
+
+
 github_token=""
 github_ready=0
 

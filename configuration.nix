@@ -55,8 +55,7 @@ fonts.packages = [
   brews = [
       "herdr"
       "supabase/tap/supabase"
-      "vercel-cli"
-      
+      "render"
     "automic-vault/isotopes/gh-cli"
     ];
     casks = [
