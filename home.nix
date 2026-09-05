@@ -290,7 +290,7 @@ in
 
   home.sessionVariables = {
     EDITOR = "nvim";
-  };
+};
 
 
 
@@ -404,13 +404,14 @@ in
   # Topgrade
   #
   # IMPORTANT:
-  # Topgrade no longer pulls ~/firstmate or ~/dotfiles.
+  # Topgrade's own git handling cannot pull ~/firstmate or ~/dotfiles.
   #
   # Those repositories require:
   #   fetch upstream
   #   rebase upstream/main
   #
-  # kun-sync owns that job.
+  # kun-sync owns that job, and runs as a topgrade post_command below,
+  # so `topgrade` and `./rebuild.sh` both keep every repository current.
   # ---------------------------------------------------------------------------
 
   programs.topgrade = {
@@ -432,6 +433,14 @@ in
 
         "Pi Signed Models" =
           "pi-signed update --models";
+
+        # firstmate and dotfiles need fetch upstream + rebase, which
+        # topgrade's own git handling cannot do, so kun-sync owns them.
+        # Running it here means one `topgrade` really does update
+        # everything. It refuses any repository with uncommitted work,
+        # so a dirty checkout is reported rather than disturbed.
+        "Kun Sync (firstmate + dotfiles)" =
+          "kun-sync";
       };
     };
   };

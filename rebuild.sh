@@ -72,6 +72,25 @@ if [[ "$github_ready" -eq 0 ]]; then
   export NIX_CONFIG="access-tokens = github.com=$github_token"
 fi
 
+# ------------------------------------------------------------
+# Sync Kun's latest into firstmate and dotfiles first, so the
+# rebuild below builds from the current configuration rather
+# than a stale one.
+#
+# Non-fatal on purpose: kun-sync refuses to touch a repository
+# that has uncommitted work, and that refusal must not block a
+# rebuild. It reports and we carry on with what is on disk.
+# ------------------------------------------------------------
+
+echo
+echo "==> Syncing upstream (firstmate + dotfiles)"
+
+if command -v kun-sync >/dev/null 2>&1; then
+  kun-sync || echo "    kun-sync did not complete; rebuilding from the current checkout"
+else
+  echo "    kun-sync not installed yet; skipping (it arrives with this rebuild)"
+fi
+
 echo
 echo "==> Rebuilding system"
 
