@@ -134,13 +134,24 @@ let
           exit 1
         fi
 
+        # Uncommitted work must not block the sync, and must not be
+        # destroyed either. Set it aside, sync, then put it back.
+        # A stash is recoverable; `git checkout .` is not.
+        stashed=0
+
         if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
-          echo "ERROR: $name has uncommitted changes."
-          echo
-          git -C "$repo" status --short
-          echo
-          echo "Commit or stash them before running kun-sync."
-          exit 1
+          echo "    setting aside uncommitted changes..."
+          git -C "$repo" status --short | sed 's/^/      /'
+
+          if git -C "$repo" stash push \
+               --include-untracked \
+               --message "kun-sync auto-stash $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+               >/dev/null; then
+            stashed=1
+          else
+            echo "ERROR: $name could not set aside its uncommitted changes."
+            exit 1
+          fi
         fi
 
         git -C "$repo" switch main
@@ -191,6 +202,21 @@ let
             origin main
         else
           git -C "$repo" push -u origin main
+        fi
+
+        if [[ "$stashed" -eq 1 ]]; then
+          echo "    restoring your uncommitted changes..."
+
+          if git -C "$repo" stash pop >/dev/null 2>&1; then
+            echo "    restored"
+          else
+            echo
+            echo "    NOTE: your changes conflict with the new upstream code."
+            echo "    Nothing was lost. They are kept in the stash:"
+            echo "      git -C $repo stash list"
+            echo "      git -C $repo stash pop     # then resolve"
+            echo
+          fi
         fi
 
         echo "==> $name: latest Kun + personal configuration"
