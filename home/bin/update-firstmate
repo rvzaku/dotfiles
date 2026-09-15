@@ -6,7 +6,7 @@ if [ ! -d "$repo/.git" ]; then
   printf 'firstmate: %s is not installed; skipping update\n' "$repo"
   exit 0
 fi
-if [ -n "$(git -C "$repo" status --porcelain -- . ':!config/crew-dispatch.json')" ]; then
+if [ -n "$(git -C "$repo" status --porcelain)" ]; then
   printf 'firstmate: local edits present; refusing to update\n'
   exit 0
 fi

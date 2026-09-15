@@ -4,7 +4,7 @@ export PATH="${NPM_CONFIG_PREFIX:-$HOME/.local}/bin:$PATH"
 
 usage() {
   printf 'usage: %s [--install]\n' "$0"
-  printf 'Checks the pinned global npm tools and the no-mistakes/treehouse installers.\n'
+  printf 'Checks the pinned global npm tools and the Firstmate-managed Go tools.\n'
 }
 install_missing=false
 case "${1:-}" in
@@ -15,7 +15,7 @@ case "${1:-}" in
 esac
 
 missing=()
-for tool in node npm gh gh-axi acpx chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass remote-pi; do
+for tool in node npm gh gh-axi chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass remote-pi; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 for tool in no-mistakes treehouse; do
