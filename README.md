@@ -56,15 +56,16 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 ./bootstrap.sh
 ```
 
-`bootstrap.sh` does five things, in order:
+`bootstrap.sh` does six things, in order:
 
 1. Installs Determinate Nix, if it isn't already installed.
-2. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
-3. Symlinks this repo to `~/.dotfiles`.
+2. Symlinks this repo to `~/.dotfiles`.
    This has to happen before the first build, because `home.nix` points at config files through `~/.dotfiles`.
+3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
 4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
 5. Runs the first `darwin-rebuild switch`.
    It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
+6. Verifies the pinned global agent npm tools are on `PATH` and installs `no-mistakes` and `treehouse` from their official installers if either is missing.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 
@@ -126,9 +127,9 @@ If you don't use it, just remove it from `brews` in your copy.
 
 **Heads-up:**
 
-- `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, and opencode.
+- `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, OpenCode, and Pi.
   If you clone this repo, you'd silently inherit my agent instructions - edit or delete `home/AGENTS.md` if you don't want that.
-- The `cc` and `co` shell aliases in `home.nix` are high-agency shortcuts: `claude --dangerously-skip-permissions` and `codex --full-auto`.
+- The `cc`, `co`, `oc`, `gp`, `cu`, and `py` shell aliases in `home.nix` run the `agent-*-yolo` wrappers in `home/bin/` - high-agency shortcuts that skip each tool's own approval prompts (see "Global agent foundation" below).
   They're convenient for me, but know what they do before you use them.
 
 ## Repo tour
@@ -170,7 +171,7 @@ configured writable source is this checkout's `home/AGENTS.md` and
 ## Pi configuration
 
 Pi is declared in `home.packages` and its pinned package resources are managed
-by `home/.pi/agent/settings.json`:
+by `home/.pi/agent/settings.json`.
 
 [Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is also optional and installed from its owner, not declared by this config:
 
