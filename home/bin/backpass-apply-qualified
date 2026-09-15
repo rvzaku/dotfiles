@@ -18,7 +18,7 @@ set -e
 set +e
 printf '%s\n' "$output" | tr '\r' '\n' | sed $'s/\033\[[0-9;]*[[:alpha:]]//g' | \
   grep -Ei 'accepted|rejected|wrote|applied|proposal|no proposed' | tail -8 | \
-  awk 'BEGIN { printf "backpass: " } { if (n++) printf " | "; printf "%s", $0 } END { print "" }'
+  awk '{ if (n++) { printf " | " } else { printf "backpass: " } printf "%s", $0 } END { if (n) print "" }'
 grep_status="${PIPESTATUS[3]}"
 set -e
 if [ "$grep_status" -ne 0 ]; then
