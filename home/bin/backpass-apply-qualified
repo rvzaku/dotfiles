@@ -15,10 +15,13 @@ output="$(NO_COLOR=1 yes a | script -q /dev/null backpass apply --scope user --n
 status=$?
 set -e
 
+set +e
 printf '%s\n' "$output" | tr '\r' '\n' | sed $'s/\033\[[0-9;]*[[:alpha:]]//g' | \
   grep -Ei 'accepted|rejected|wrote|applied|proposal|no proposed' | tail -8 | \
   awk 'BEGIN { printf "backpass: " } { if (n++) printf " | "; printf "%s", $0 } END { print "" }'
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+grep_status="${PIPESTATUS[3]}"
+set -e
+if [ "$grep_status" -ne 0 ]; then
   printf 'backpass: apply completed; no file summary was emitted\n'
 fi
 exit "$status"
