@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deliberately update only when invoked by Topgrade (or explicitly by the
+# operator). Bootstrap and normal Home Manager activation stay pinned.
+if command -v npm >/dev/null 2>&1; then
+  NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.local}" npm install --global --no-fund --no-audit \
+    acpx@latest \
+    gh-axi@latest \
+    chrome-devtools-axi@latest \
+    tasks-axi@latest \
+    quota-axi@latest \
+    lavish-axi@latest \
+    backpass@latest \
+    remote-pi@latest
+fi
+command -v no-mistakes >/dev/null 2>&1 && no-mistakes update || true
+command -v treehouse >/dev/null 2>&1 && treehouse update || true
+update-firstmate

@@ -1,0 +1,4 @@
+# Autonomous mode is the default for every project. Independent validation and
+# no-mistakes escalation remain mandatory in home/AGENTS.md.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"

@@ -11,8 +11,10 @@
   "steeringMode": "all",
   "followUpMode": "all",
   "collapseChangelog": true,
+  "defaultProjectTrust": "always",
   "packages": [
     "npm:pi-web-access@0.14.0",
-    "npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6"
+    "npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6",
+    "npm:remote-pi@0.7.0"
   ]
 }
