@@ -1,0 +1,29 @@
+{
+  "discovery": {
+    "harnesses": ["claude", "codex", "pi", "opencode", "grok", "cursor", "hermes"],
+    "since": "30d",
+    "includeProjects": [],
+    "excludeProjects": [],
+    "maxTranscriptsPerProject": null,
+    "hosts": []
+  },
+  "user": {
+    "memoryFiles": [".agents/AGENTS.md"],
+    "skillsDir": "~/.dotfiles/home/.agents/skills/backpass",
+    "skillsDirs": [".agents/skills", ".claude/skills", ".codex/skills"],
+    "budgetTokens": 5000,
+    "minGapEvidence": 2,
+    "minGapProjects": 1,
+    "maxTranscripts": 100,
+    "gapLedgerMaxAge": "90d",
+    "sampleHalfLife": "14d",
+    "autoAgent": true,
+    "discovery": {
+      "harnesses": ["claude", "codex", "pi", "opencode", "grok", "cursor", "hermes"],
+      "since": "30d",
+      "includeProjects": [],
+      "excludeProjects": [],
+      "maxTranscriptsPerProject": null
+    }
+  }
+}

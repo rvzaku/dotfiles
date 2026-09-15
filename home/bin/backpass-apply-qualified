@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Backpass has already gated the saved proposal before this script is called.
+# `script` supplies a real PTY so the terminal reviewer accepts each proposed
+# hunk without adding a second approval request. Backpass still owns all
+# analysis, freshness, evidence, and project-gap checks.
+if ! command -v backpass >/dev/null 2>&1; then
+  printf 'backpass-apply-qualified: backpass is not installed\n' >&2
+  exit 127
+fi
+
+set +e
+output="$(NO_COLOR=1 yes a | script -q /dev/null backpass apply --scope user --no-ui 2>&1)"
+status=$?
+set -e
+
+printf '%s\n' "$output" | tr '\r' '\n' | sed $'s/\033\[[0-9;]*[[:alpha:]]//g' | \
+  grep -Ei 'accepted|rejected|wrote|applied|proposal|no proposed' | tail -8 | \
+  awk 'BEGIN { printf "backpass: " } { if (n++) printf " | "; printf "%s", $0 } END { print "" }'
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+  printf 'backpass: apply completed; no file summary was emitted\n'
+fi
+exit "$status"
