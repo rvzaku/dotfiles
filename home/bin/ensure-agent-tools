@@ -15,7 +15,7 @@ case "${1:-}" in
 esac
 
 missing=()
-for tool in node npm gh gh-axi chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass remote-pi; do
+for tool in node npm gh gh-axi acpx chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass remote-pi; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 for tool in no-mistakes treehouse; do
