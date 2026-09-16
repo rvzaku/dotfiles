@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local}"
 case "$npm_prefix" in
   \$HOME/*) npm_prefix="$HOME/${npm_prefix#\$HOME/}" ;;
@@ -8,54 +8,74 @@ export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
 
 usage() {
   printf 'usage: %s [--install]\n' "$0"
-  printf 'Checks the pinned global npm tools and the no-mistakes/treehouse installers.\n'
+  printf '%s\n' 'Checks pinned global npm tools and official no-mistakes/treehouse installers.'
 }
 install_missing=false
 case "${1:-}" in
-  "") ;;
+  '') ;;
   --install) install_missing=true ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
 
 missing=()
-for tool in node npm gh gh-axi acpx chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass remote-pi; do
+for tool in node npm gh gh-axi acpx chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass skills remote-pi; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 for tool in no-mistakes treehouse; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
+# Pi is deliberately an optional runtime. Prefer the signed launcher, then the
+# plain CLI; neither absence nor a broken Pi install blocks other bootstrap work.
+if command -v pi-signed >/dev/null 2>&1; then
+  printf '%s\n' 'agent tools: pi-signed is available (preferred)'
+elif command -v pi >/dev/null 2>&1; then
+  printf '%s\n' 'agent tools: pi-signed unavailable; pi fallback is available' >&2
+else
+  printf '%s\n' 'agent tools: Pi unavailable; Pi workflows are degraded but bootstrap may continue' >&2
+fi
+
 if ((${#missing[@]} == 0)); then
-  printf 'agent tools: all required tools are available\n'
+  printf '%s\n' 'agent tools: all required tools are available'
   exit 0
 fi
 printf 'agent tools: missing %s\n' "${missing[*]}"
 if [ "$install_missing" != true ]; then
-  printf 'agent tools: rerun with --install to use the official installers for no-mistakes/treehouse\n' >&2
+  printf '%s\n' 'agent tools: rerun with --install to use official installers for no-mistakes/treehouse' >&2
   exit 1
 fi
 
-# npm tools are declaratively installed by Home Manager. This command only
-# repairs a not-yet-run activation and never changes versions implicitly.
 if command -v npm >/dev/null 2>&1; then
-  NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
-    acpx@0.15.1 \
-    gh-axi@0.1.35 \
-    chrome-devtools-axi@0.1.34 \
-    tasks-axi@0.2.5 \
-    quota-axi@0.1.44 \
-    lavish-axi@0.1.68 \
-    backpass@0.1.22 \
-    remote-pi@0.7.0
+  if ! NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
+    acpx@0.15.1 gh-axi@0.1.35 chrome-devtools-axi@0.1.34 \
+    tasks-axi@0.2.5 quota-axi@0.1.44 lavish-axi@0.1.68 \
+    backpass@0.1.22 skills@1.5.26 remote-pi@0.7.0; then
+    printf '%s\n' 'agent tools: pinned npm installation failed; continuing with official installers' >&2
+  fi
+else
+  printf '%s\n' 'agent tools: npm unavailable; pinned npm tools are degraded' >&2
 fi
 
 # These projects publish signed/verified installers and are intentionally not
 # replaced by an unpinned npm or Homebrew package.
 if ! command -v no-mistakes >/dev/null 2>&1; then
-  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh
+  curl --proto '=https' --tlsv1.2 -fsSL \
+    https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh \
+    || printf '%s\n' 'agent tools: no-mistakes installer failed' >&2
 fi
 if ! command -v treehouse >/dev/null 2>&1; then
-  curl --proto '=https' --tlsv1.2 -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh
+  curl --proto '=https' --tlsv1.2 -fsSL \
+    https://kunchenguid.github.io/treehouse/install.sh | sh \
+    || printf '%s\n' 'agent tools: treehouse installer failed' >&2
 fi
 
-exec "$0"
+# Recheck the required set. Pi remains outside this gate by design.
+missing_after=()
+for tool in node npm gh gh-axi acpx chrome-devtools-axi tasks-axi quota-axi lavish-axi backpass skills remote-pi no-mistakes treehouse; do
+  command -v "$tool" >/dev/null 2>&1 || missing_after+=("$tool")
+done
+if ((${#missing_after[@]} > 0)); then
+  printf 'agent tools: still missing %s\n' "${missing_after[*]}" >&2
+  exit 1
+fi
+printf '%s\n' 'agent tools: required tools are available; Pi status is reported separately'

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Takes a fresh Mac from nothing to a built nix-darwin config.
-# Run this once. After it finishes, use ./rebuild.sh for every later change.
+# Take a fresh Mac from nothing to the locked nix-darwin configuration.
+# Rerunning after an interruption is safe: existing checkouts and user files
+# are preserved, and the switch helper rolls flake.lock back on failure.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -14,80 +15,56 @@ load_nix_profile() {
 }
 
 load_nix_profile
-
-echo "==> Step 1: Determinate Nix"
+printf '%s\n' '==> Step 1: Determinate Nix'
 if command -v nix >/dev/null 2>&1; then
-  echo "    nix already installed, skipping"
+  printf '%s\n' '    nix already installed, skipping'
 else
   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix \
     | sh -s -- install --no-confirm
   load_nix_profile
 fi
-
 if ! command -v nix >/dev/null 2>&1; then
-  echo "    Nix is installed but not available in this shell; open a new shell and rerun ./bootstrap.sh." >&2
+  printf '%s\n' '    Nix is installed but unavailable in this shell; rerun bootstrap in a new shell.' >&2
   exit 1
 fi
 
-echo "==> Step 2: symlink this repo to ~/.dotfiles"
-# home.nix resolves its mkOutOfStoreSymlink paths through ~/.dotfiles, so this
-# has to exist before the first switch or the build will fail to find them.
-# Refuse an unrelated existing path instead of replacing it silently.
-"$DIR/home/bin/ensure-dotfiles-link" "$DIR" "$HOME/.dotfiles"
-
-echo "==> Step 2b: make Firstmate available"
+printf '%s\n' '==> Step 2: make Firstmate available'
 FIRSTMATE_DIR="${FIRSTMATE_HOME:-$HOME/firstmate}"
 if [ -d "$FIRSTMATE_DIR/.git" ]; then
-  echo "    Firstmate already exists at $FIRSTMATE_DIR, preserving it."
+  printf '    preserving existing Firstmate checkout at %s\n' "$FIRSTMATE_DIR"
 elif [ -e "$FIRSTMATE_DIR" ]; then
-  echo "    $FIRSTMATE_DIR exists but is not a Git checkout; refusing to replace it."
+  printf '    %s exists but is not a Git checkout; refusing to replace it\n' "$FIRSTMATE_DIR" >&2
   exit 1
 else
   git clone https://github.com/kunchenguid/firstmate.git "$FIRSTMATE_DIR"
 fi
 
-echo "==> Step 3: personalize the configured username"
-# Do this before any sudo call: sudo resets $USER to root, so whoami has to
-# run as the real interactive user first.
-REAL_USER="$(whoami)"
+printf '%s\n' '==> Step 3: personalize the configured username'
+# Do this before sudo: sudo can replace the interactive user's identity.
+REAL_USER="$(id -un)"
 FLAKE_USER="$(sed -nE 's/^[[:space:]]*user = "([^"]+)";.*/\1/p' "$DIR/flake.nix" | head -n1)"
 if [ -z "$FLAKE_USER" ]; then
-  echo "    Could not find the single \"user = \" line in flake.nix."
-  echo "    Edit flake.nix yourself before continuing."
+  printf '%s\n' '    Could not find the single user setting in flake.nix; edit it before continuing.' >&2
   exit 1
 elif [ "$FLAKE_USER" != "$REAL_USER" ]; then
-  echo "    flake.nix is configured for user \"$FLAKE_USER\", but you are \"$REAL_USER\"."
-  read -r -p "    Rewrite flake.nix's \"user = \" line to \"$REAL_USER\"? [y/N] " REPLY
-  if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
-    sed -i '' -E "s/^([[:space:]]*user = \")[^\"]+(\";.*)/\1${REAL_USER}\2/" "$DIR/flake.nix"
-    echo "    Updated. Review the change with: git diff flake.nix"
+  printf '    flake.nix uses user %s, but this account is %s.\n' "$FLAKE_USER" "$REAL_USER"
+  read -r -p "    Rewrite flake.nix's user setting? [y/N] " REPLY
+  if [ "$REPLY" = y ] || [ "$REPLY" = Y ]; then
+    sed -i '' -E 's/^([[:space:]]*user = ")[^"]+(";.*)/\1'"$REAL_USER"'\2/' "$DIR/flake.nix"
   else
-    echo "    Skipped. Edit the single \"user = \" line in flake.nix yourself before continuing."
+    printf '%s\n' '    skipped; edit flake.nix and rerun bootstrap' >&2
     exit 1
   fi
 else
-  echo "    flake.nix already matches \"$REAL_USER\", nothing to do."
+  printf '    flake.nix already matches %s\n' "$REAL_USER"
 fi
 
-echo "==> Step 4: first darwin-rebuild switch (pinned to nix-darwin-26.05)"
-# darwin-rebuild doesn't exist yet on a fresh machine, so run it straight
-# from the flake this once. After this, rebuild.sh works normally.
-# This fetches the darwin-rebuild tool from the nix-darwin-26.05 release branch,
-# not the exact flake.lock revision. The system config it applies is still pinned
-# by this repo's flake.lock.
-# sudo resets PATH to a secure default that excludes /nix/.../bin, so a
-# freshly installed `nix` would not be found under sudo even though it's
-# on PATH here. Resolve the absolute path first and invoke that instead.
-NIX_BIN="$(command -v nix)"
-# "mac" is the flake host label - if you renamed it, change it in flake.nix
-# and rebuild.sh too.
-sudo "$NIX_BIN" run github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
-  switch --flake ~/.dotfiles#mac
+printf '%s\n' '==> Step 4: first darwin-rebuild switch'
+# apply-darwin supplies DOTFILES_ROOT, so a disposable clone path works without
+# introducing a hidden dotfiles alias. It also warns before Homebrew zap cleanup.
+DOTFILES_ROOT="$DIR" "$DIR/home/bin/apply-darwin" --bootstrap
 
-echo "==> Step 5: verify global agent tools"
-export PATH="$HOME/.local/bin:/etc/profiles/per-user/$REAL_USER/bin:/run/current-system/sw/bin:$PATH"
+printf '%s\n' '==> Step 5: verify global agent tools'
+export PATH="$HOME/.local/bin:$HOME/firstmate/bin:/etc/profiles/per-user/$REAL_USER/bin:/run/current-system/sw/bin:$PATH"
 "$DIR/home/bin/ensure-agent-tools" --install
-# If this still fails with "nix: command not found", open a new terminal
-# (Determinate adds nix to new shells' PATH) and re-run ./bootstrap.sh.
-
-echo "==> Done. Use ./rebuild.sh for future changes."
+printf '%s\n' '==> Done. Use ./rebuild.sh for later changes.'

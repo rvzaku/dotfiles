@@ -1,28 +1,98 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Topgrade's custom full-update transaction for mutable agent tooling.
+# Targeted Topgrade invocations do not select this custom command; invoking it
+# directly with no arguments means the complete transaction.
+set -u
 
-# Topgrade may run in a shell opened before Home Manager updated PATH. Add the
-# declarative npm prefix and Firstmate bin explicitly so newly installed tools
-# are usable in this same run.
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    -h|--help)
+      printf '%s\n' 'usage: update-agent-tools'
+      printf '%s\n' 'Runs the complete mutable agent update transaction. Topgrade --only remains targeted.'
+      exit 0
+      ;;
+    *)
+      printf 'update-agent-tools: unexpected argument %s; use no arguments for the full transaction\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local}"
 case "$npm_prefix" in
   \$HOME/*) npm_prefix="$HOME/${npm_prefix#\$HOME/}" ;;
 esac
 export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
+failures=()
 
-# Deliberately update only when invoked by Topgrade (or explicitly by the
-# operator). Bootstrap and normal Home Manager activation stay pinned.
 if command -v npm >/dev/null 2>&1; then
-  NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
-    acpx@latest \
-    gh-axi@latest \
-    chrome-devtools-axi@latest \
-    tasks-axi@latest \
-    quota-axi@latest \
-    lavish-axi@latest \
-    backpass@latest \
-    remote-pi@latest
+  if ! NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
+    acpx@latest gh-axi@latest chrome-devtools-axi@latest tasks-axi@latest \
+    quota-axi@latest lavish-axi@latest backpass@latest skills@latest remote-pi@latest; then
+    failures+=(npm)
+    printf '%s\n' 'agent tools: npm update failed; continuing with independent updates' >&2
+  fi
+else
+  printf '%s\n' 'agent tools: npm unavailable; global npm updates are unproven' >&2
+  failures+=(npm)
 fi
-command -v no-mistakes >/dev/null 2>&1 && no-mistakes update || true
-command -v treehouse >/dev/null 2>&1 && treehouse update || true
-update-firstmate
+
+if command -v no-mistakes >/dev/null 2>&1; then
+  if ! no-mistakes update; then
+    failures+=(no-mistakes)
+    printf '%s\n' 'agent tools: no-mistakes update failed; continuing' >&2
+  fi
+else
+  printf '%s\n' 'agent tools: no-mistakes unavailable; update is unproven' >&2
+  failures+=(no-mistakes)
+fi
+if command -v treehouse >/dev/null 2>&1; then
+  if ! treehouse update; then
+    failures+=(treehouse)
+    printf '%s\n' 'agent tools: treehouse update failed; continuing' >&2
+  fi
+else
+  printf '%s\n' 'agent tools: treehouse unavailable; update is unproven' >&2
+  failures+=(treehouse)
+fi
+
+if [ -x "$HOME/.local/bin/update-skills" ]; then
+  if ! "$HOME/.local/bin/update-skills"; then
+    failures+=(skills)
+  fi
+elif command -v update-skills >/dev/null 2>&1; then
+  if ! update-skills; then
+    failures+=(skills)
+  fi
+else
+  printf '%s\n' 'skills: updater unavailable; global skill update is unproven' >&2
+  failures+=(skills)
+fi
+
+# Firstmate is fetched on every full transaction, but update-firstmate refuses
+# dirty, ahead, detached, and diverged checkouts without rewriting them.
+if command -v update-firstmate >/dev/null 2>&1; then
+  if ! update-firstmate; then
+    failures+=(firstmate)
+  fi
+else
+  printf '%s\n' 'firstmate: updater unavailable; update is unproven' >&2
+  failures+=(firstmate)
+fi
+
+if ((${#failures[@]} == 0)); then
+  if command -v prune-migration-backups >/dev/null 2>&1; then
+    if ! prune-migration-backups; then failures+=(backup-prune); fi
+  else
+    printf '%s\n' 'backups: pruning helper unavailable; old migration backups retained' >&2
+    failures+=(backup-prune)
+  fi
+else
+  printf 'agent tools: retaining migration backups because transaction had failures: %s\n' "${failures[*]}" >&2
+fi
+
+if ((${#failures[@]} > 0)); then
+  printf 'agent tools: complete update degraded or failed: %s\n' "${failures[*]}" >&2
+  exit 1
+fi
+printf '%s\n' 'agent tools: complete update transaction finished'

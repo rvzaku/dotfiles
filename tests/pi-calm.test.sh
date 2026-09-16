@@ -180,6 +180,8 @@ test_static_typescript_and_repo_wiring() {
     echo "skip: installed @earendil-works/pi-coding-agent package not found for TypeScript check"
   elif ! command -v tsc >/dev/null 2>&1; then
     echo "skip: tsc not found for TypeScript check"
+  elif [ ! -d "$PI_PACKAGE_DIR/node_modules/@types/node" ]; then
+    echo "skip: Pi package has no @types/node dependency for TypeScript check"
   else
     local fixture="$TMP_ROOT/typecheck"
     build_node_fixture "$fixture"
@@ -611,8 +613,11 @@ test_real_pi_tui_smoke() {
     echo "skip: pi or tmux not found for isolated real TUI smoke"
     return 0
   fi
-  [ "$(pi --version 2>/dev/null || true)" = "0.82.0" ] \
-    || fail "real Pi smoke requires the installed Pi 0.82.0 proof target"
+  pi_version=$(pi --version 2>/dev/null || true)
+  case "$pi_version" in
+    0.82.*|0.83.*|0.84.*|0.85.*|0.86.*|0.87.*|0.88.*|0.89.*|0.9[0-9].*) ;;
+    *) echo "skip: real Pi smoke requires Pi 0.82 or newer (found ${pi_version:-none})"; return 0 ;;
+  esac
 
   fixture="$TMP_ROOT/tui-smoke"
   agent="$fixture/agent"

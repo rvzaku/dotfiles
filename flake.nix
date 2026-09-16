@@ -19,10 +19,19 @@
       # The one username line to change if this isn't your machine.
       # bootstrap.sh offers to rewrite this for you if your macOS username differs.
       user = "kunchen";
+      dotfilesRoot =
+        let fromEnvironment = builtins.getEnv "DOTFILES_ROOT";
+        in if fromEnvironment != "" then fromEnvironment else "/Users/${user}/dotfiles";
     in
     {
       darwinConfigurations."mac" = nix-darwin.lib.darwinSystem {
-        specialArgs = { inherit user; };
+        specialArgs = {
+          inherit user;
+          # Out-of-store links must point at the checkout, not a Nix store
+          # copy. apply-darwin.sh supplies this for arbitrary clone paths;
+          # pure evaluation keeps the conventional primary location.
+          inherit dotfilesRoot;
+        };
         modules = [
           ./configuration.nix
           nix-homebrew.darwinModules.nix-homebrew
@@ -30,7 +39,10 @@
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.extraSpecialArgs = { inherit user; };
+            home-manager.extraSpecialArgs = {
+              inherit user;
+              inherit dotfilesRoot;
+            };
             home-manager.users.${user} = import ./home.nix;
           }
         ];

@@ -83,11 +83,12 @@ backup_target() {
 # generation already has a recoverable source.  Do not move those links or
 # accidentally turn a path inside a linked directory into a repository edit.
 is_expected_link() {
-  local target=$1 expected=$2 link_target
+  local target=$1 expected=$2 link_target hm_files_root
   [ -L "$target" ] || return 1
   link_target=$(readlink "$target" 2>/dev/null || true)
+  hm_files_root="${XDG_STATE_HOME:-$HOME/.local/state}/home-manager-files"
   case "$link_target" in
-    "$expected"|"$settings_state"|*/home-manager-files/*) return 0 ;;
+    "$expected"|"$settings_state"|"$hm_files_root"/*) return 0 ;;
   esac
   return 1
 }
@@ -98,15 +99,20 @@ is_expected_link() {
 migrate_directory_link() {
   local target_relative=$1 source_directory=$2
   local target="$HOME/$target_relative"
-  local resolved_source staging
+  local resolved_source expected_source staging
   [ -L "$target" ] || return 0
   [ -d "$target" ] || return 0
-  resolved_source=$(cd -P "$target" && pwd -P)
+  resolved_source=$(cd -P "$target" 2>/dev/null && pwd -P || true)
+  expected_source=$(cd -P "$source_directory" 2>/dev/null && pwd -P || true)
+  if [ -z "$resolved_source" ] || [ -z "$expected_source" ] || [ "$resolved_source" != "$expected_source" ]; then
+    printf 'dotfiles: preserving unexpected directory link %s\n' "$target" >&2
+    return 0
+  fi
   ensure_backup_root
-  staging="$HOME/$(dirname "$target_relative")/.dotfiles-migrate-$$-$RANDOM"
+  staging="$HOME/$(dirname "$target_relative")/dotfiles-migrate-$$-$RANDOM"
   mkdir -p "$staging"
   if ! cp -a "$resolved_source"/. "$staging"/; then
-    rm -rf "$staging"
+    rm -r -- "$staging"
     printf 'dotfiles: failed to copy directory link %s; original link is unchanged\n' "$target" >&2
     exit 1
   fi
@@ -114,21 +120,27 @@ migrate_directory_link() {
   mv "$target" "$backup_root/directories/$target_relative"
   mv "$staging" "$target"
   printf 'dotfiles: migrated directory link %s (source %s)\n' "$target" "$resolved_source"
-  # Keep this argument meaningful for callers and make an accidental source
-  # mismatch visible during development without rejecting custom source links.
-  : "$source_directory"
 }
 
 # A parent symlink that is not one of the old managed directory links could
 # redirect a leaf replacement into an unrelated tree.  Refuse that case rather
 # than silently modifying it.
+validate_target_relative() {
+  case "$1" in
+    ''|/*|.|..|../*|*/../*|*/..)
+      printf 'dotfiles: refusing managed path outside HOME: %s\n' "$1" >&2
+      exit 1
+      ;;
+  esac
+}
+
 validate_parents() {
   local target=$1 parent
   parent=$(dirname "$target")
   while [ "$parent" != "$HOME" ] && [ "$parent" != "/" ]; do
     if [ -L "$parent" ]; then
       printf 'dotfiles: refusing managed path below an unexpected symlink: %s\n' "$parent" >&2
-      exit 1
+      return 1
     fi
     parent=$(dirname "$parent")
   done
@@ -137,13 +149,19 @@ validate_parents() {
 # Establish real directories before validating any leaf.  The source argument
 # is retained in the manifest to make this migration explicit and auditable.
 while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_relative; do
-  validate_parents "$HOME/$target_relative"
+  validate_target_relative "$target_relative"
+  if ! validate_parents "$HOME/$target_relative"; then
+    continue
+  fi
   migrate_directory_link "$target_relative" "$source_relative"
 done < "$directories"
 
 validate_parents "$settings_target"
 while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_path; do
-  validate_parents "$HOME/$target_relative"
+  validate_target_relative "$target_relative"
+  if ! validate_parents "$HOME/$target_relative"; then
+    continue
+  fi
 done < "$manifest"
 
 # Compose Pi settings before moving their old location.  Managed keys win, but

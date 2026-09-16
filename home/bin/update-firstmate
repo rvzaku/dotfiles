@@ -1,33 +1,49 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Fetch Kun's Firstmate checkout without rewriting any local work.
+set -u
 
 repo="${FIRSTMATE_HOME:-$HOME/firstmate}"
 if [ ! -d "$repo/.git" ]; then
-  printf 'firstmate: %s is not installed; skipping update\n' "$repo"
-  exit 0
+  printf 'firstmate: %s is not installed; update is unproven\n' "$repo" >&2
+  exit 1
 fi
 if [ -n "$(git -C "$repo" status --porcelain -- . ':!config/crew-dispatch.json')" ]; then
-  printf 'firstmate: local edits present; refusing to update\n'
+  printf '%s\n' 'firstmate: local edits present; refusing to update'
   exit 0
 fi
 branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD || true)
 if [ -z "$branch" ]; then
-  printf 'firstmate: detached HEAD; refusing to update\n'
+  printf '%s\n' 'firstmate: detached HEAD; refusing to update'
   exit 0
 fi
-git -C "$repo" fetch --prune origin
-remote_ref="refs/remotes/origin/$branch"
-if ! git -C "$repo" show-ref --verify --quiet "$remote_ref"; then
-  printf 'firstmate: origin/%s is unavailable; refusing to update\n' "$branch"
+
+# Fetch directly from Kun even if a user changed the checkout's origin to a
+# fork. The dedicated remote-tracking ref does not rewrite remotes or work.
+upstream_url="${FIRSTMATE_UPSTREAM_URL:-https://github.com/kunchenguid/firstmate.git}"
+upstream_ref="refs/remotes/dotfiles-kun/$branch"
+if ! git -C "$repo" fetch --prune "$upstream_url" \
+  "refs/heads/$branch:$upstream_ref"; then
+  printf '%s\n' 'firstmate: Kun upstream fetch failed; preserving the current checkout' >&2
+  exit 1
+fi
+if ! git -C "$repo" show-ref --verify --quiet "$upstream_ref"; then
+  printf 'firstmate: Kun upstream branch %s is unavailable; refusing to update\n' "$branch" >&2
   exit 0
 fi
-if ! git -C "$repo" merge-base --is-ancestor HEAD "$remote_ref"; then
-  printf 'firstmate: local history diverges from origin/%s; refusing to update\n' "$branch"
-  exit 0
-fi
-if git -C "$repo" diff --quiet HEAD "$remote_ref"; then
-  printf 'firstmate: already current\n'
+
+# Check each relation explicitly. In particular, an ahead checkout must not
+# receive a merge attempt that could rewrite or obscure the operator's work.
+if git -C "$repo" diff --quiet HEAD "$upstream_ref"; then
+  printf '%s\n' 'firstmate: already current'
+elif git -C "$repo" merge-base --is-ancestor "$upstream_ref" HEAD; then
+  printf 'firstmate: local checkout is ahead of Kun/%s; preserving it\n' "$branch"
+elif git -C "$repo" merge-base --is-ancestor HEAD "$upstream_ref"; then
+  if git -C "$repo" merge --ff-only "$upstream_ref"; then
+    printf 'firstmate: fast-forwarded to %s\n' "$(git -C "$repo" rev-parse --short HEAD)"
+  else
+    printf '%s\n' 'firstmate: fast-forward failed; preserving the current checkout' >&2
+    exit 0
+  fi
 else
-  git -C "$repo" merge --ff-only "$remote_ref"
-  printf 'firstmate: fast-forwarded to %s\n' "$(git -C "$repo" rev-parse --short HEAD)"
+  printf 'firstmate: local history diverges from Kun/%s; preserving it\n' "$branch"
 fi

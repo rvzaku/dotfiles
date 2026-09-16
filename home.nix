@@ -3,22 +3,22 @@
   lib,
   pkgs,
   user,
+  dotfilesRoot ? "",
   ...
 }:
 
 let
-  dotfiles = "${config.home.homeDirectory}/.dotfiles";
+  # The checkout is normally $HOME/dotfiles. apply-darwin.sh passes an
+  # explicit root when a fixture or worktree lives elsewhere; this keeps
+  # out-of-store links portable without creating a hidden alias.
+  dotfiles = if dotfilesRoot != "" then dotfilesRoot else "${config.home.homeDirectory}/dotfiles";
   piSettingsState = "${config.home.homeDirectory}/.local/state/dotfiles/pi-agent-settings.json";
   piSettingsTarget = "${config.home.homeDirectory}/.pi/agent/settings.json";
 
   runtimeArtifact =
     sourceRelative:
     lib.hasPrefix ".config/herdr/" sourceRelative
-    && (
-      lib.hasSuffix ".log" sourceRelative
-      || sourceRelative == ".config/herdr/session.json"
-      || lib.hasSuffix ".sock" sourceRelative
-    );
+    && sourceRelative != ".config/herdr/config.toml";
 
   # Enumerate only leaf resources. Linking a whole directory would replace
   # existing Pi skills/themes/extensions and would prevent Home Manager from
@@ -44,9 +44,9 @@ let
 
   fileLink = sourceRelative: {
     source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/${sourceRelative}";
-    # This is intentionally narrow: only a leaf enumerated from this
-    # repository is replaceable, never an entire user directory.
-    force = true;
+    # Collision adoption runs immediately before Home Manager's own check.
+    # Do not use Home Manager's force escape hatch: unknown paths must remain
+    # protected and a failed adoption must fail closed.
   };
 
   directoryLinks =
@@ -176,7 +176,6 @@ let
     // {
       ".pi/agent/settings.json" = {
         source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
-        force = true;
       };
     };
 in
@@ -250,6 +249,9 @@ in
     sqlite
     postgresql
     redis
+    # Security and the native macOS container workflow are explicit owners.
+    clamav
+    container
 
     # editor/LSP servers for the declared languages and configuration formats
     bash-language-server
@@ -293,7 +295,8 @@ in
   home.sessionPath = [
     "$HOME/.local/bin"
     "$HOME/firstmate/bin"
-    "$HOME/.npm/bin"
+    # npm's declared prefix is ~/.local; do not put an unmanaged npm prefix
+    # ahead of it.
   ];
   home.sessionVariables = {
     EDITOR = "nvim";
@@ -305,7 +308,7 @@ in
   # declarative activation. Topgrade owns later latest-version updates.
   home.activation.agentNpmTools = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     if command -v npm >/dev/null 2>&1; then
-      NPM_CONFIG_PREFIX="$HOME/.local" npm install --global --no-fund --no-audit \
+      if ! NPM_CONFIG_PREFIX="$HOME/.local" npm install --global --no-fund --no-audit \
         acpx@0.15.1 \
         gh-axi@0.1.35 \
         chrome-devtools-axi@0.1.34 \
@@ -313,7 +316,10 @@ in
         quota-axi@0.1.44 \
         lavish-axi@0.1.68 \
         backpass@0.1.22 \
-        remote-pi@0.7.0
+        skills@1.5.26 \
+        remote-pi@0.7.0; then
+        echo "warning: pinned global agent npm tools could not be installed" >&2
+      fi
     else
       echo "warning: npm is unavailable; global agent npm tools were not installed" >&2
     fi
@@ -370,10 +376,11 @@ in
       co = "agent-codex-yolo";
       oc = "agent-opencode-yolo";
       gp = "agent-grok-yolo";
-      cu = "agent-cursor-yolo";
       py = "agent-pi-yolo";
       backpass-learn = "backpass --scope user --strict";
       backpass-apply = "backpass-apply-qualified";
+      cu = "agent-cursor-yolo";
+      doctor = "dot-doctor";
     };
   };
 
@@ -407,7 +414,7 @@ in
     ${
       lib.concatMapStrings (
         root:
-        "      printf '%s\\0%s\\0' ${lib.escapeShellArg root.target} ${lib.escapeShellArg root.source}\n"
+        "      printf '%s\\0%s\\0' ${lib.escapeShellArg root.target} ${lib.escapeShellArg "${dotfiles}/home/${root.source}"}\n"
       ) directoryRoots
     }    } > "$directories"
         ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-managed-paths" \

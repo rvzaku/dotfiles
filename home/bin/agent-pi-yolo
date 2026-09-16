@@ -1,3 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
-exec pi --approve "$@"
+set -u
+if command -v pi-signed >/dev/null 2>&1; then
+  exec pi-signed --approve "$@"
+elif command -v pi >/dev/null 2>&1; then
+  printf '%s\n' 'agent-pi-yolo: pi-signed unavailable; using pi fallback' >&2
+  exec pi --approve "$@"
+else
+  printf '%s\n' 'agent-pi-yolo: Pi is unavailable; skipping Pi invocation' >&2
+  exit 0
+fi

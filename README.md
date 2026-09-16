@@ -59,8 +59,9 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 `bootstrap.sh` does six things, in order:
 
 1. Installs Determinate Nix, if it isn't already installed.
-2. Symlinks this repo to `~/.dotfiles`.
-   This has to happen before the first build, because `home.nix` points at config files through `~/.dotfiles`.
+2. Uses this checkout as the source of truth. `$HOME/dotfiles` is the normal
+   primary location; a disposable clone at any absolute path also works, and
+   no hidden dotfiles alias is created.
 3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
 4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
 5. Runs the first `darwin-rebuild switch`.
@@ -85,6 +86,7 @@ byte-preserving backups, Pi hook composition, and Nix syntax:
 
 ```sh
 tests/managed-paths.test.sh
+tests/agent-workflows.test.sh
 ```
 
 ## Daily use
@@ -98,8 +100,8 @@ Edit the config files in place, then apply:
 That's it.
 No separate build-and-copy step.
 
-`./rebuild.sh` is safe to rerun after an interrupted bootstrap. It refuses an
-unrelated existing `~/.dotfiles` path instead of replacing it silently. The
+`./rebuild.sh` is safe to rerun after an interrupted bootstrap and does not
+replace or remove any user path. The
 same pinned npm tools and wrappers are available in a fresh login through
 `~/.local/bin` and `~/firstmate/bin`; `update-agent-tools` also adds those
 directories when Topgrade runs from an older shell.
@@ -111,8 +113,8 @@ If you clone it, review these before you run `bootstrap.sh`:
 
 - **Username**: run `./bootstrap.sh` (it detects your macOS username and offers to set it) OR change the single `user = "kunchen"` line in `flake.nix`.
   Everything else (`configuration.nix`, `home.nix`, home directory paths) is threaded from that one variable.
-- **Host label** `"mac"`, in three places: `flake.nix` (the `darwinConfigurations."mac"` name), `rebuild.sh:5` (the `#mac` at the end of the flake reference), and `bootstrap.sh`'s first-switch command (also `#mac`).
-  All three have to match.
+- **Host label** `"mac"`, in `flake.nix` and the shared `home/bin/apply-darwin` helper. Keep those references aligned if you rename it.
+  Keep the host label consistent wherever it appears.
 - **CPU architecture**, `hostPlatform` in `configuration.nix` (see Prerequisites above).
 
 **Git identity:** this config deliberately does not set your git name or email.
@@ -190,7 +192,7 @@ configured writable source is this checkout's `home/AGENTS.md` and
 Pi is declared in `home.packages` and its pinned package resources are managed
 by `home/.pi/agent/settings.json`.
 
-[Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is also optional and installed from its owner, not declared by this config:
+[Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is declared from its owner tap so the signed launcher can be preferred:
 
 ```sh
 brew install --cask kunchenguid/tap/pi-launcher
@@ -236,6 +238,24 @@ The first time you launch `nvim`, it bootstraps [lazy.nvim](https://github.com/f
 That needs network access once; after that it's offline.
 Neovim and WezTerm both use the rose-pine moon theme.
 Neovim keeps italics off and uses a transparent background on macOS, Windows, and WSL so it matches the terminal setup.
+
+## Ownership and fork delta
+
+| Component | Owner | Mutable state |
+| --- | --- | --- |
+| Nix, nix-darwin, Home Manager, nix-homebrew | `flake.nix`, `configuration.nix`, `home.nix` | `flake.lock` is reviewed and rolled back on failed switches |
+| Homebrew inventory and zap warning | `configuration.nix`, `home/bin/apply-darwin` | Homebrew's own database |
+| Agent npm tools and Skills updates | `home.nix`, `home/bin/update-agent-tools`, `home/bin/update-skills` | npm prefix and global Skills registry under `$HOME` |
+| Firstmate and Herdr | `bootstrap.sh`, `home/bin/update-firstmate`, `home/.config/herdr` | `$FIRSTMATE_HOME` and Herdr runtime state |
+| Agent resources and vendor Skills | `home/`, `home/.agents/skills` | Auth, sessions, caches, and package trees stay outside Git |
+| Collision adoption and migrations | `home/bin/prepare-managed-paths` | `$XDG_STATE_HOME/dotfiles/backups/home-manager` |
+
+This is a minimal fork of Kun's current architecture. The intentional delta is
+portable checkout-root injection for arbitrary worktrees, additive collision
+adoption with byte-preserving backups, Pi signed-launcher preference and
+fallback, explicit security/container packages, read-only `dot-doctor`, and
+safe full-update helpers. Existing agent resources remain vendor-owned unless
+the table above names this checkout as their owner.
 
 ## License
 

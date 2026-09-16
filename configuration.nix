@@ -31,8 +31,10 @@
   };
   homebrew = {
     enable = true;
+    taps = [ "kunchenguid/tap" ];
     onActivation.cleanup = "zap"; # remove anything not listed here
-    onActivation.autoUpdate = true;
+    # Topgrade owns latest-version updates; switches remain reproducible.
+    onActivation.autoUpdate = false;
     onActivation.extraFlags = [ "--force" ];
     brews = [
       "herdr"
@@ -42,6 +44,9 @@
       "claude-code"
       "codex"
       "google-chrome"
+      # Signed Pi is preferred by the wrapper; the plain Pi package remains
+      # the fallback when this optional launcher is unavailable.
+      "kunchenguid/tap/pi-launcher"
     ];
   };
 }

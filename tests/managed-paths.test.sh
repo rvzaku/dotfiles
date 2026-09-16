@@ -39,8 +39,8 @@ printf '%s\0%s\0' '.agents/skills/managed.md' "$REPO/home/.agents/skills/managed
 printf '%s\0%s\0' '.pi/agent/extensions/managed.js' \
   "$REPO/home/.pi/agent/extensions/managed.js" >> "$manifest"
 printf '%s\0%s\0' '.claude/settings.json' "$REPO/home/claude-settings" >> "$manifest"
-printf '%s\0%s\0' '.agents/skills' '.agents/skills' > "$directories"
-printf '%s\0%s\0' '.pi/agent/extensions' '.pi/agent/extensions' >> "$directories"
+printf '%s\0%s\0' '.agents/skills' "$REPO/home/.agents/skills" > "$directories"
+printf '%s\0%s\0' '.pi/agent/extensions' "$REPO/home/.pi/agent/extensions" >> "$directories"
 
 HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
   bash "$ROOT/home/bin/prepare-managed-paths" \
