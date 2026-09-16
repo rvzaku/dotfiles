@@ -15,32 +15,42 @@ mkdir -p \
   "$REPO/home/.agents/skills" \
   "$REPO/home/.pi/agent/extensions" \
   "$REPO/home/.pi/agent" \
+  "$REPO/home/bin" \
   "$TEST_HOME/.agents" \
+  "$TEST_HOME/.local" \
   "$TEST_HOME/.pi/agent" \
   "$TEST_HOME/.claude"
 
 printf 'managed skill\n' > "$REPO/home/.agents/skills/managed.md"
 printf 'source-only resource\n' > "$REPO/home/.agents/skills/source-only.md"
 printf 'managed extension\n' > "$REPO/home/.pi/agent/extensions/managed.js"
+printf 'public command\n' > "$REPO/home/bin/public-command"
+printf 'private helper\n' > "$REPO/home/bin/private-helper"
 printf '{"theme":"repo","packages":["repo"]}\n' > "$REPO/home/.pi/agent/settings.json"
 printf '{"theme":"old","hooks":{"before":"preserve"},"localOnly":true}\n' \
   > "$TEST_HOME/.pi/agent/settings.json"
-printf 'existing Claude settings\n' > "$TEST_HOME/.claude/settings.json"
 printf 'existing Claude settings\n' > "$TEST_HOME/.claude/settings.json"
 printf 'managed Claude settings\n' > "$REPO/home/claude-settings"
 
 # Model the old whole-directory links that caused the original collision.
 ln -s "$REPO/home/.agents/skills" "$TEST_HOME/.agents/skills"
 ln -s "$REPO/home/.pi/agent/extensions" "$TEST_HOME/.pi/agent/extensions"
+ln -s "$REPO/home/bin" "$TEST_HOME/.local/bin"
 
 manifest="$TMP_ROOT/manifest0"
 directories="$TMP_ROOT/directories0"
-printf '%s\0%s\0' '.agents/skills/managed.md' "$REPO/home/.agents/skills/managed.md" > "$manifest"
-printf '%s\0%s\0' '.pi/agent/extensions/managed.js' \
-  "$REPO/home/.pi/agent/extensions/managed.js" >> "$manifest"
-printf '%s\0%s\0' '.claude/settings.json' "$REPO/home/claude-settings" >> "$manifest"
-printf '%s\0%s\0' '.agents/skills' "$REPO/home/.agents/skills" > "$directories"
-printf '%s\0%s\0' '.pi/agent/extensions' "$REPO/home/.pi/agent/extensions" >> "$directories"
+{
+  printf '%s\0%s\0' '.agents/skills/managed.md' "$REPO/home/.agents/skills/managed.md"
+  printf '%s\0%s\0' '.pi/agent/extensions/managed.js' \
+    "$REPO/home/.pi/agent/extensions/managed.js"
+  printf '%s\0%s\0' '.claude/settings.json' "$REPO/home/claude-settings"
+  printf '%s\0%s\0' '.local/bin/public-command' "$REPO/home/bin/public-command"
+} > "$manifest"
+{
+  printf '%s\0%s\0' '.agents/skills' "$REPO/home/.agents/skills"
+  printf '%s\0%s\0' '.pi/agent/extensions' "$REPO/home/.pi/agent/extensions"
+  printf '%s\0%s\0' '.local/bin' "$REPO/home/bin"
+} > "$directories"
 
 HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
   bash "$ROOT/home/bin/prepare-managed-paths" \
@@ -54,9 +64,13 @@ HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
 [ -d "$TEST_HOME/.agents/skills" ] || fail "skills directory was not restored as a real directory"
 [ ! -L "$TEST_HOME/.agents/skills" ] || fail "skills directory is still a whole-directory link"
 [ -f "$TEST_HOME/.agents/skills/source-only.md" ] || fail "source-only skill was lost"
+[ -d "$TEST_HOME/.local/bin" ] || fail "bin directory was not restored as a real directory"
+[ ! -L "$TEST_HOME/.local/bin" ] || fail "bin directory is still a whole-directory link"
+[ ! -e "$TEST_HOME/.local/bin/private-helper" ] || fail "private helper leaked into public bin migration"
 ln -s "$REPO/home/.agents/skills/managed.md" "$TEST_HOME/.agents/skills/managed.md"
 ln -s "$REPO/home/.pi/agent/extensions/managed.js" \
   "$TEST_HOME/.pi/agent/extensions/managed.js"
+ln -s "$REPO/home/bin/public-command" "$TEST_HOME/.local/bin/public-command"
 [ -f "$TEST_HOME/.pi/agent/extensions/managed.js" ] || fail "extension was lost"
 [ "$(jq -r '.hooks.before' "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json")" = preserve ] \
   || fail "Pi hooks were not preserved"
@@ -68,6 +82,7 @@ backup_root=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager" \
 [ -n "$backup_root" ] || fail "no collision backup was created"
 [ -L "$backup_root/directories/.agents/skills" ] || fail "old directory link was not backed up"
 [ -L "$backup_root/directories/.pi/agent/extensions" ] || fail "old extension link was not backed up"
+[ -L "$backup_root/directories/.local/bin" ] || fail "old bin directory link was not backed up"
 [ "$(cat "$backup_root/files/.pi/agent/settings.json")" = \
   '{"theme":"old","hooks":{"before":"preserve"},"localOnly":true}' ] \
   || fail "Pi settings backup was not byte-preserving"

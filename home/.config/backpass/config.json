@@ -1,6 +1,6 @@
 {
   "discovery": {
-    "harnesses": ["claude", "codex", "pi", "opencode", "grok", "cursor", "hermes"],
+    "harnesses": ["claude", "codex", "pi", "opencode", "grok", "hermes"],
     "since": "30d",
     "includeProjects": [],
     "excludeProjects": [],
@@ -19,7 +19,7 @@
     "sampleHalfLife": "14d",
     "autoAgent": true,
     "discovery": {
-      "harnesses": ["claude", "codex", "pi", "opencode", "grok", "cursor", "hermes"],
+      "harnesses": ["claude", "codex", "pi", "opencode", "grok", "hermes"],
       "since": "30d",
       "includeProjects": [],
       "excludeProjects": [],

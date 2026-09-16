@@ -51,12 +51,11 @@ packages are not managed by Nix or Git.
 
 ## Validation and recovery
 
-`dot-doctor` is read-only. It reports missing optional backends as degraded and
+`dot-doctor` is read-only. It reports missing optional backends as degraded,
+uses Automic Vault scan results as the security authority, and fails rather
+than claiming managed security success when HIGH or CRITICAL AV findings remain.
 Implementation worktrees are created and managed with Treehouse; the primary
-`$HOME/dotfiles` checkout is reserved for personal configuration use.
-
-`dot-doctor` is read-only. It reports missing optional backends as degraded and
-fails only for repository integrity or security-policy violations. Focused
+`$HOME/dotfiles` checkout is reserved for personal configuration use. Focused
 regression checks are executable and can be run without a real machine:
 
 ```sh
@@ -65,5 +64,5 @@ tests/agent-workflows.test.sh
 ```
 
 Important landing work uses the No Mistakes pipeline. Physical fresh-Mac,
-Homebrew zap, signed Pi launcher, Apple container, antivirus, and authenticated
+Homebrew zap, signed Pi launcher, Apple container, Automic Vault, and authenticated
 Firstmate acceptance remain unproven unless explicitly run on that machine.

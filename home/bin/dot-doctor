@@ -89,7 +89,29 @@ elif command -v pi >/dev/null 2>&1; then
 else
   degraded_check 'Pi is unavailable; Pi-dependent workflows are unproven'
 fi
-for tool in herdr topgrade treehouse no-mistakes clamscan container; do
+
+if command -v av >/dev/null 2>&1; then
+  if ! command -v jq >/dev/null 2>&1; then
+    fail_check 'Automic Vault is available but jq is missing, so AV findings cannot be evaluated'
+  else
+    av_scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX")
+    if av scan --json >"$av_scan" 2>/dev/null; then
+      av_blocking=$(jq '[.findings[]? | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
+      case "$av_blocking" in
+        ''|*[!0-9]*) fail_check 'Automic Vault scan output could not be parsed' ;;
+        0) pass_check 'Automic Vault scan reports no HIGH or CRITICAL findings' ;;
+        *) fail_check "Automic Vault scan reports $av_blocking unresolved HIGH/CRITICAL finding(s)" ;;
+      esac
+    else
+      fail_check 'Automic Vault scan failed; managed security status is unproven'
+    fi
+    rm -f "$av_scan"
+  fi
+else
+  degraded_check 'Automic Vault CLI is unavailable; managed security status is unproven'
+fi
+
+for tool in herdr topgrade treehouse no-mistakes container; do
   if command -v "$tool" >/dev/null 2>&1; then
     pass_check "$tool is available"
   else

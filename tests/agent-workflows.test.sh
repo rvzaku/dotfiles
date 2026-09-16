@@ -4,6 +4,7 @@
 # Firstmate checkout outside their temporary directories.
 set -u
 
+# shellcheck disable=SC1091
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -27,10 +28,37 @@ assert_file_contains() {
 }
 
 test_public_commands() {
-  for command in apply-darwin dot-doctor update-agent-tools update-firstmate update-skills prune-migration-backups; do
-    [ -x "$ROOT/home/bin/$command" ] || fail "public command $command is not executable"
+  command -v nix >/dev/null 2>&1 || fail "nix is required to verify public command links"
+  command -v jq >/dev/null 2>&1 || fail "jq is required to verify public command links"
+  local actual expected
+  actual=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
+    "$ROOT#darwinConfigurations.mac.config.home-manager.users.kunchen" \
+    --apply '
+      cfg:
+      let names = builtins.attrNames cfg.home.file;
+      in builtins.filter (name: builtins.match "\\.local/bin/.*" name != null) names
+    ') || fail "could not evaluate public command links"
+  actual=$(printf '%s' "$actual" | jq -c 'sort')
+  expected=$(printf '%s\n' \
+    '.local/bin/agent-claude-yolo' \
+    '.local/bin/agent-codex-yolo' \
+    '.local/bin/agent-grok-yolo' \
+    '.local/bin/agent-opencode-yolo' \
+    '.local/bin/agent-pi-yolo' \
+    '.local/bin/backpass-apply-qualified' \
+    '.local/bin/dot-doctor' \
+    '.local/bin/ensure-agent-tools' \
+    '.local/bin/update-agent-tools' \
+    '.local/bin/update-firstmate' \
+    | jq -R . | jq -cs 'sort')
+  [ "$actual" = "$expected" ] || fail "Home Manager public command allowlist changed: $actual"
+  if printf '%s' "$actual" | jq -e 'index(".local/bin/mate")' >/dev/null; then
+    fail 'mate command leaked into public command links'
+  fi
+  for command in apply-darwin prepare-managed-paths prune-migration-backups update-skills; do
+    [ -x "$ROOT/home/bin/$command" ] || fail "repository helper $command is not executable"
   done
-  pass 'public update and diagnostic commands are executable'
+  pass 'public command links are allowlisted and helpers stay private'
 }
 
 test_pi_preference_and_degradation() {
@@ -55,19 +83,46 @@ SCRIPT
   pass 'Pi prefers pi-signed, falls back to pi, and degrades without either'
 }
 
+test_av_authority_blocks_high_findings() {
+  local doctor_home="$TMP_ROOT/av-doctor-home" status
+  mkdir -p "$doctor_home"
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'scan --json') printf '{"findings":[{"severity":"high"}]}\n' ;;
+  *) exit 2 ;;
+esac
+SCRIPT
+  cat >"$FAKE/jq" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '1\n'
+SCRIPT
+  chmod +x "$FAKE/av" "$FAKE/jq"
+  set +e
+  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/av-doctor.out" 2>&1
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'dot-doctor claimed success with a HIGH Automic Vault finding'
+  assert_file_contains "$TMP_ROOT/av-doctor.out" 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' \
+    'Automic Vault blocking finding was not reported'
+  rm -f "$FAKE/av" "$FAKE/jq"
+  pass 'Automic Vault HIGH/CRITICAL findings block managed security success'
+}
+
 test_skills_and_topgrade_boundaries() {
   local log="$TMP_ROOT/updates.log" output
   : >"$log"
   mkdir -p "$TMP_ROOT/home/.local/bin"
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/home/.local/bin/update-skills"
-  for command in npm no-mistakes treehouse skills update-firstmate prune-migration-backups; do
+  for command in npm no-mistakes treehouse skills update-firstmate; do
     fake_command "$command"
   done
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
   assert_file_contains "$log" 'skills update --global --yes' 'global Skills registry was not updated'
   assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
-  assert_file_contains "$log" 'prune-migration-backups' 'successful update did not prune backups'
+  assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
   assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
   : >"$log"
   if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
@@ -86,7 +141,7 @@ test_npm_prefix_fallback() {
 printf '%s\n' "${NPM_CONFIG_PREFIX:?}" > "${NPM_PREFIX_LOG:?}"
 SCRIPT
   chmod +x "$FAKE/npm"
-  for command in no-mistakes treehouse skills update-firstmate prune-migration-backups; do
+  for command in no-mistakes treehouse skills update-firstmate; do
     fake_command "$command"
   done
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
@@ -188,6 +243,7 @@ SCRIPT
 
 test_public_commands
 test_pi_preference_and_degradation
+test_av_authority_blocks_high_findings
 test_skills_and_topgrade_boundaries
 test_npm_prefix_fallback
 test_firstmate_relations

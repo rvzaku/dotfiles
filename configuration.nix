@@ -36,7 +36,10 @@ in
   };
   homebrew = {
     enable = true;
-    taps = [ "kunchenguid/tap" ];
+    taps = [
+      "automic-vault/isotopes"
+      "kunchenguid/tap"
+    ];
     onActivation.cleanup = "zap"; # remove anything not listed here
     # Topgrade owns latest-version updates; switches remain reproducible.
     onActivation.autoUpdate = false;
@@ -45,6 +48,7 @@ in
       "herdr"
     ];
     casks = [
+      "automic-vault"
       "wezterm"
       "claude-code"
       "codex"

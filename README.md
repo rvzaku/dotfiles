@@ -24,7 +24,7 @@ If you find a bug, please open a GitHub Issue using the bug report template.
 Running the switch builds:
 
 - System settings (dark mode, key repeat, dock, Finder, trackpad)
-- Homebrew apps (casks and CLI tools)
+- Homebrew apps (Automic Vault, signed Pi Launcher, casks, and CLI tools)
 - Nix user packages (CLI utilities, runtimes, language servers, Pi, and Nerd Fonts)
 - Shell (zsh, aliases, starship prompt)
 - Editor (Neovim config with the rose-pine moon theme)
@@ -140,11 +140,15 @@ Read through `brews` and `casks` before you run `bootstrap.sh` or `rebuild.sh` f
 It's a real public Homebrew formula (`brew info herdr` finds it in homebrew-core, no tap needed), so it will install fine.
 If you don't use it, just remove it from `brews` in your copy.
 
+**Automic Vault:** the official `automic-vault/isotopes/automic-vault` cask is declared so `av` remains the security authority.
+`dot-doctor` runs `av scan --json` read-only and fails if AV reports unresolved HIGH or CRITICAL findings.
+Secrets, approvals, authorization history, and vault state stay in Automic Vault's own runtime locations, not in Git or Nix.
+
 **Heads-up:**
 
 - `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, OpenCode, and Pi.
   If you clone this repo, you'd silently inherit my agent instructions - edit or delete `home/AGENTS.md` if you don't want that.
-- The `cc`, `co`, `oc`, `gp`, `cu`, and `py` shell aliases in `home.nix` run the `agent-*-yolo` wrappers in `home/bin/` - high-agency shortcuts that skip each tool's own approval prompts (see "Global agent foundation" below).
+- The `cc`, `co`, `oc`, `gp`, and `py` shell aliases in `home.nix` run the `agent-*-yolo` wrappers in `home/bin/` - high-agency shortcuts that skip each tool's own approval prompts (see "Global agent foundation" below).
   They're convenient for me, but know what they do before you use them.
 
 ## Repo tour
@@ -177,10 +181,13 @@ is linked into Firstmate's local `config/` directory and uses quota-aware profil
 arrays for image generation, difficult design/architecture/planning, defined bug
 fixes, and the default Pi profile.
 
-Claude, Codex, OpenCode, Grok, Cursor, and Pi have yolo wrappers for autonomous
+Claude, Codex, OpenCode, Grok, and Pi have yolo wrappers for autonomous
 execution. This does not bypass independent tests, no-mistakes, or escalation
 boundaries. Topgrade is the only routine latest-version update path for these
 tools; normal Home Manager activation installs the pinned bootstrap versions.
+Only the documented wrapper, doctor, `ensure-agent-tools`, and update commands are
+linked into `~/.local/bin`; helper scripts such as the Home Manager adoption
+and backup-prune internals stay repo-local.
 
 Backpass user-scope state is private under `~/.config/backpass/user/`; its
 configured writable source is this checkout's `home/AGENTS.md` and
@@ -244,7 +251,7 @@ Neovim keeps italics off and uses a transparent background on macOS, Windows, an
 | Component | Owner | Mutable state |
 | --- | --- | --- |
 | Nix, nix-darwin, Home Manager, nix-homebrew | `flake.nix`, `configuration.nix`, `home.nix` | `flake.lock` is reviewed and rolled back on failed switches |
-| Homebrew inventory and zap warning | `configuration.nix`, `home/bin/apply-darwin` | Homebrew's own database |
+| Homebrew inventory, Automic Vault, and zap warning | `configuration.nix`, `home/bin/apply-darwin`, `home/bin/dot-doctor` | Homebrew's own database and AV's local authority store |
 | Agent npm tools and Skills updates | `home.nix`, `home/bin/update-agent-tools`, `home/bin/update-skills` | npm prefix and global Skills registry under `$HOME` |
 | Firstmate and Herdr | `bootstrap.sh`, `home/bin/update-firstmate`, `home/.config/herdr` | `$FIRSTMATE_HOME` and Herdr runtime state |
 | Agent resources and vendor Skills | `home/`, `home/.agents/skills` | Auth, sessions, caches, and package trees stay outside Git |
@@ -253,7 +260,7 @@ Neovim keeps italics off and uses a transparent background on macOS, Windows, an
 This is a minimal fork of Kun's current architecture. The intentional delta is
 portable checkout-root injection for arbitrary worktrees, additive collision
 adoption with byte-preserving backups, Pi signed-launcher preference and
-fallback, explicit security/container packages, read-only `dot-doctor`, and
+fallback, Automic Vault security checks, explicit container packages, read-only `dot-doctor`, and
 safe full-update helpers. Existing agent resources remain vendor-owned unless
 the table above names this checkout as their owner.
 

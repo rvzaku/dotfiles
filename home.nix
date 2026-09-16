@@ -125,6 +125,30 @@ let
       source = ".pi/agent/extensions";
       target = ".pi/agent/extensions";
     }
+  ];
+
+  publicBinCommands = [
+    "agent-claude-yolo"
+    "agent-codex-yolo"
+    "agent-grok-yolo"
+    "agent-opencode-yolo"
+    "agent-pi-yolo"
+    "backpass-apply-qualified"
+    "dot-doctor"
+    "ensure-agent-tools"
+    "update-agent-tools"
+    "update-firstmate"
+  ];
+
+  publicBinPairs = map (command: {
+    source = "bin/${command}";
+    target = ".local/bin/${command}";
+  }) publicBinCommands;
+
+  # Previous iterations linked the whole repository bin directory. Keep that
+  # path as migration-only so activation can replace the old directory link
+  # with a real user-owned bin directory without exposing every repo helper.
+  migrationDirectoryRoots = [
     {
       source = "bin";
       target = ".local/bin";
@@ -174,7 +198,7 @@ let
   ];
 
   managedPairs =
-    explicitPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
+    explicitPairs ++ publicBinPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
 
   managedFiles =
     (lib.foldl' (acc: root: acc // directoryLinks root.source root.target) { } directoryRoots)
@@ -182,7 +206,7 @@ let
       map ({ source, target }: {
         name = target;
         value = fileLink source;
-      }) explicitPairs
+      }) (explicitPairs ++ publicBinPairs)
     )
     // {
       ".pi/agent/settings.json" = {
@@ -394,7 +418,6 @@ in
       py = "agent-pi-yolo";
       backpass-learn = "backpass --scope user --strict";
       backpass-apply = "backpass-apply-qualified";
-      cu = "agent-cursor-yolo";
       doctor = "dot-doctor";
     };
   };
@@ -430,7 +453,7 @@ in
       lib.concatMapStrings (
         root:
         "      printf '%s\\0%s\\0' ${lib.escapeShellArg root.target} ${lib.escapeShellArg "${dotfiles}/home/${root.source}"}\n"
-      ) directoryRoots
+      ) (directoryRoots ++ migrationDirectoryRoots)
     }    } > "$directories"
         ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-managed-paths" \
           --manifest0 "$manifest" \
