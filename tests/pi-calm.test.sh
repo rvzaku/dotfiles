@@ -611,10 +611,8 @@ test_real_pi_tui_smoke() {
     echo "skip: pi or tmux not found for isolated real TUI smoke"
     return 0
   fi
-  if [ "$(pi --version 2>/dev/null || true)" != "0.82.0" ]; then
-    echo "skip: real Pi smoke requires Pi 0.82.0 proof target"
-    return 0
-  fi
+  [ "$(pi --version 2>/dev/null || true)" = "0.82.0" ] \
+    || fail "real Pi smoke requires the installed Pi 0.82.0 proof target"
 
   fixture="$TMP_ROOT/tui-smoke"
   agent="$fixture/agent"
