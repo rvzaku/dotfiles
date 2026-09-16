@@ -44,7 +44,7 @@ Running the switch builds:
 On a brand new Mac, from a bare clone of this repo:
 
 ```sh
-git clone https://github.com/kunchenguid/dotfiles.git
+git clone https://github.com/rvzaku/dotfiles.git
 cd dotfiles
 ```
 
