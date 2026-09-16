@@ -44,7 +44,7 @@ Running the switch builds:
 On a brand new Mac, from a bare clone of this repo:
 
 ```sh
-git clone https://github.com/kunchenguid/dotfiles.git
+git clone https://github.com/rvzaku/dotfiles.git
 cd dotfiles
 ```
 
@@ -64,7 +64,7 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
 4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
 5. Runs the first `darwin-rebuild switch`.
-   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
+   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config. Home Manager adopts only the declared leaf files, preserving existing directories and backing up replaced files under `~/.local/state/dotfiles/backups/home-manager/`.
 6. Verifies the pinned global agent npm tools are on `PATH` and installs `no-mistakes` and `treehouse` from their official installers if either is missing.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
@@ -80,6 +80,13 @@ nix build .#darwinConfigurations.mac.system --dry-run
 
 If you renamed the host label in "Make it yours", substitute your label for `mac` in these commands.
 
+The collision-adoption fixture checks first activation, rerun idempotence,
+byte-preserving backups, Pi hook composition, and Nix syntax:
+
+```sh
+tests/managed-paths.test.sh
+```
+
 ## Daily use
 
 Edit the config files in place, then apply:
@@ -90,6 +97,12 @@ Edit the config files in place, then apply:
 
 That's it.
 No separate build-and-copy step.
+
+`./rebuild.sh` is safe to rerun after an interrupted bootstrap. It refuses an
+unrelated existing `~/.dotfiles` path instead of replacing it silently. The
+same pinned npm tools and wrappers are available in a fresh login through
+`~/.local/bin` and `~/firstmate/bin`; `update-agent-tools` also adds those
+directories when Topgrade runs from an older shell.
 
 ## Make it yours
 
@@ -145,7 +158,11 @@ If you don't use it, just remove it from `brews` in your copy.
 ## How the symlinks work
 
 The files under `home/` are the real files - editing them here is editing your live config, no rebuild needed to see the change in your editor.
-`home.nix` uses `mkOutOfStoreSymlink` to point paths like `~/.config/nvim` straight at `home/.config/nvim` in this repo, so the two never drift out of sync.
+`home.nix` uses additive leaf `mkOutOfStoreSymlink` links, so paths like
+`~/.config/nvim` read from this repo without replacing a pre-existing config
+directory. Existing files at declared leaves are moved byte-for-byte to a
+unique backup directory before replacement; older backups are never
+overwritten. Files and resources not declared by this repo remain untouched.
 You only run `./rebuild.sh` when you change something that isn't just a symlinked file, like a package list or a system default.
 
 ## Global agent foundation
@@ -179,11 +196,23 @@ by `home/.pi/agent/settings.json`.
 brew install --cask kunchenguid/tap/pi-launcher
 ```
 
-Home Manager owns exactly two repository-authored Pi directories: `~/.pi/agent/themes` and `~/.pi/agent/extensions`. It also links `models.json` and `settings.json` as individual files. The local extension directory is for public, repository-authored extensions only - third-party package code never belongs there. Run `/reload` after editing a local extension or other Pi resources. The terminal-title extension shows a spinner while Pi is working, then a completion mark with the session name or current directory. The `rose-pine-moon` theme was authored clean-room from the public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's [public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
+Home Manager owns repository-authored Pi leaves below `~/.pi/agent/themes` and
+`~/.pi/agent/extensions`, not those directories themselves. Existing themes
+and extensions not in this repo stay active. It also links `models.json` and a
+composed `settings.json` as individual files. Existing Pi settings are backed
+up and merged with the repository settings, with repository keys taking
+precedence while unknown nested settings such as hooks remain active. The
+local extension directory is for public, repository-authored extensions only -
+third-party package code never belongs there. Run `/reload` after editing a
+local extension or other Pi resources. The terminal-title extension shows a
+spinner while Pi is working, then a completion mark with the session name or
+current directory. The `rose-pine-moon` theme was authored clean-room from the
+public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's
+[public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
 
 ### Pi Calm
 
-`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Home Manager's existing global extensions-directory link makes Pi auto-load it without another declaration. `/calm` toggles a conversation-only presentation mode and is off by default. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency.
+`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Home Manager links its files additively into `~/.pi/agent/extensions`, so Pi auto-loads it without another declaration. `/calm` toggles a conversation-only presentation mode and is off by default. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency.
 
 When enabled, Calm hides collapsed thinking and the call/result shells for Pi's seven built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`) without leaving blank transcript rows. During an active run it replaces Pi's working row with a two-line animated blue-water, yellow-boat widget. `/calm` restores Pi's stock rendering and preserves the existing Ctrl+O tool-expansion choice.
 

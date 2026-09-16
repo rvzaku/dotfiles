@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export PATH="${NPM_CONFIG_PREFIX:-$HOME/.local}/bin:$PATH"
+npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local}"
+case "$npm_prefix" in
+  \$HOME/*) npm_prefix="$HOME/${npm_prefix#\$HOME/}" ;;
+esac
+export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
 
 usage() {
   printf 'usage: %s [--install]\n' "$0"
@@ -34,7 +38,7 @@ fi
 # npm tools are declaratively installed by Home Manager. This command only
 # repairs a not-yet-run activation and never changes versions implicitly.
 if command -v npm >/dev/null 2>&1; then
-  NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.local}" npm install --global --no-fund --no-audit \
+  NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
     acpx@0.15.1 \
     gh-axi@0.1.35 \
     chrome-devtools-axi@0.1.34 \

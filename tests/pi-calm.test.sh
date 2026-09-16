@@ -113,9 +113,11 @@ test_zero_coupling_and_state_file() {
     assert_not_contains "$(cat "$file")" "$pat_dash" "$file mentions $pat_dash"
     assert_not_contains "$(cat "$file")" "$separator" "$file contains the operational separator"
   done
-  # The upstream project name may appear only in a license attribution.
+  # Within the standalone Calm source, the upstream project name may appear
+  # only in a license attribution. Repository docs may describe Firstmate's
+  # separate configuration without coupling Calm to it.
   local attribution_name="First""mate"
-  license_hits=$(grep -rni "$attribution_name" "$CALM_DIR" "$ROOT/README.md" "$ROOT/home.nix" 2>/dev/null | grep -v "Adapted from" || true)
+  license_hits=$(grep -rni "$attribution_name" "$CALM_DIR" 2>/dev/null | grep -v "Adapted from" || true)
   [ -z "$license_hits" ] || fail "unexpected upstream references outside license attribution: $license_hits"
   grep -q "MIT License" "$CALM_DIR/LICENSE" || fail "calm LICENSE lost the MIT permission text"
   grep -q "Copyright (c) 2026 Kun Chen" "$CALM_DIR/LICENSE" || fail "calm LICENSE lost the copyright notice"
@@ -140,12 +142,33 @@ test_zero_coupling_and_state_file() {
 }
 
 test_static_typescript_and_repo_wiring() {
-  # Home Manager links the extensions directory as a whole, so the calm
-  # subdirectory auto-loads without any new declaration.
-  grep -q 'home.file.".pi/agent/extensions".source =' "$ROOT/home.nix" \
-    || fail "home.nix no longer links ~/.pi/agent/extensions as a directory"
-  grep -q "mkOutOfStoreSymlink \"\${dotfiles}/home/.pi/agent/extensions\"" "$ROOT/home.nix" \
-    || fail "home.nix changed the Pi extensions link target"
+  # Home Manager links extension leaves additively, so Calm auto-loads while
+  # extensions not in this repository remain available. Evaluate the real
+  # derived Home Manager config rather than the home.nix source text, since a
+  # behavior-preserving refactor could change the text without changing the
+  # linking behavior.
+  command -v nix >/dev/null 2>&1 || fail "nix is required to verify Home Manager file wiring"
+  home_manager_wiring=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
+    "$ROOT#darwinConfigurations.mac.config.home-manager.users.kunchen" \
+    --apply '
+      cfg: {
+        wholeDirectoryLinked = cfg.home.file ? ".pi/agent/extensions";
+        calmEntryLinked = cfg.home.file ? ".pi/agent/extensions/calm/index.ts";
+        managedPathsActive = cfg.home.activation ? "prepareManagedPaths";
+      }
+    ') || fail "could not evaluate the real Home Manager file map"
+  case "$home_manager_wiring" in
+    *'"wholeDirectoryLinked":false'*) : ;;
+    *) fail "home.nix links ~/.pi/agent/extensions as a whole directory" ;;
+  esac
+  case "$home_manager_wiring" in
+    *'"calmEntryLinked":true'*) : ;;
+    *) fail "home.nix no longer additively links the calm extension entry point" ;;
+  esac
+  case "$home_manager_wiring" in
+    *'"managedPathsActive":true'*) : ;;
+    *) fail "home.nix lost collision-safe adoption" ;;
+  esac
   [ -f "$CALM_DIR/index.ts" ] || fail "calm extension entry point missing"
   [ -f "$CALM_DIR/LICENSE" ] || fail "calm license file missing"
 

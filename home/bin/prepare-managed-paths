@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# Prepare existing user files for the additive Home Manager links.
+#
+# Home Manager's collision check runs before its link phase.  This helper runs
+# immediately before that check, moving only the exact paths declared by this
+# checkout into a unique, state-directory backup.  It deliberately never
+# removes an unmanaged file and never overwrites an older backup.
+set -euo pipefail
+
+usage() {
+  printf 'usage: %s --manifest0 FILE --directories0 FILE --settings-source FILE --settings-state FILE --settings-target PATH --jq PATH\n' "$0" >&2
+}
+
+manifest=''
+directories=''
+settings_source=''
+settings_state=''
+settings_target=''
+jq_bin=''
+backup_base="${DOTFILES_BACKUP_BASE:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/home-manager}"
+
+while (($# > 0)); do
+  case "$1" in
+    --manifest0) manifest=${2:?missing manifest path}; shift 2 ;;
+    --directories0) directories=${2:?missing directory manifest path}; shift 2 ;;
+    --settings-source) settings_source=${2:?missing settings source}; shift 2 ;;
+    --settings-state) settings_state=${2:?missing settings state}; shift 2 ;;
+    --settings-target) settings_target=${2:?missing settings target}; shift 2 ;;
+    --jq) jq_bin=${2:?missing jq path}; shift 2 ;;
+    --backup-base) backup_base=${2:?missing backup base}; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage; exit 2 ;;
+  esac
+done
+
+if [ -z "$manifest" ] || [ -z "$directories" ] || [ -z "$settings_source" ] \
+  || [ -z "$settings_state" ] || [ -z "$settings_target" ] || [ -z "$jq_bin" ]; then
+  usage
+  exit 2
+fi
+
+case "$settings_target" in
+  "$HOME"/*) ;;
+  *)
+    printf 'dotfiles: refusing settings target outside HOME: %s\n' "$settings_target" >&2
+    exit 1
+    ;;
+esac
+
+backup_root=''
+backup_counter=0
+ensure_backup_root() {
+  [ -n "$backup_root" ] && return 0
+  mkdir -p "$backup_base"
+  local stamp candidate
+  stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+  while :; do
+    candidate="$backup_base/$stamp-$$"
+    if [ "$backup_counter" -gt 0 ]; then
+      candidate="$candidate-$backup_counter"
+    fi
+    if mkdir "$candidate" 2>/dev/null; then
+      backup_root=$candidate
+      return 0
+    fi
+    backup_counter=$((backup_counter + 1))
+  done
+}
+
+backup_target() {
+  local target=$1 relative=$2 destination
+  if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+    return 0
+  fi
+  ensure_backup_root
+  destination="$backup_root/files/$relative"
+  mkdir -p "$(dirname "$destination")"
+  mv "$target" "$destination"
+  printf 'dotfiles: backed up %s to %s\n' "$target" "$destination"
+}
+
+# A link to the checkout, the composed Pi state, or a previous Home Manager
+# generation already has a recoverable source.  Do not move those links or
+# accidentally turn a path inside a linked directory into a repository edit.
+is_expected_link() {
+  local target=$1 expected=$2 link_target
+  [ -L "$target" ] || return 1
+  link_target=$(readlink "$target" 2>/dev/null || true)
+  case "$link_target" in
+    "$expected"|"$settings_state"|*/home-manager-files/*) return 0 ;;
+  esac
+  return 1
+}
+
+# Migrate an old whole-directory link before leaf links are installed.  Copying
+# its contents makes both repository resources and local additions available in
+# the new real directory; the original directory link is retained in backup.
+migrate_directory_link() {
+  local target_relative=$1 source_directory=$2
+  local target="$HOME/$target_relative"
+  local resolved_source staging
+  [ -L "$target" ] || return 0
+  [ -d "$target" ] || return 0
+  resolved_source=$(cd -P "$target" && pwd -P)
+  ensure_backup_root
+  staging="$HOME/$(dirname "$target_relative")/.dotfiles-migrate-$$-$RANDOM"
+  mkdir -p "$staging"
+  if ! cp -a "$resolved_source"/. "$staging"/; then
+    rm -rf "$staging"
+    printf 'dotfiles: failed to copy directory link %s; original link is unchanged\n' "$target" >&2
+    exit 1
+  fi
+  mkdir -p "$backup_root/directories/$(dirname "$target_relative")"
+  mv "$target" "$backup_root/directories/$target_relative"
+  mv "$staging" "$target"
+  printf 'dotfiles: migrated directory link %s (source %s)\n' "$target" "$resolved_source"
+  # Keep this argument meaningful for callers and make an accidental source
+  # mismatch visible during development without rejecting custom source links.
+  : "$source_directory"
+}
+
+# A parent symlink that is not one of the old managed directory links could
+# redirect a leaf replacement into an unrelated tree.  Refuse that case rather
+# than silently modifying it.
+validate_parents() {
+  local target=$1 parent
+  parent=$(dirname "$target")
+  while [ "$parent" != "$HOME" ] && [ "$parent" != "/" ]; do
+    if [ -L "$parent" ]; then
+      printf 'dotfiles: refusing managed path below an unexpected symlink: %s\n' "$parent" >&2
+      exit 1
+    fi
+    parent=$(dirname "$parent")
+  done
+}
+
+# Establish real directories before validating any leaf.  The source argument
+# is retained in the manifest to make this migration explicit and auditable.
+while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_relative; do
+  validate_parents "$HOME/$target_relative"
+  migrate_directory_link "$target_relative" "$source_relative"
+done < "$directories"
+
+validate_parents "$settings_target"
+while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_path; do
+  validate_parents "$HOME/$target_relative"
+done < "$manifest"
+
+# Compose Pi settings before moving their old location.  Managed keys win, but
+# unknown keys and nested local settings (notably hooks) remain active.
+mkdir -p "$(dirname "$settings_state")"
+settings_existing=''
+settings_should_backup=false
+if [ -e "$settings_target" ] || [ -L "$settings_target" ]; then
+  if is_expected_link "$settings_target" "$settings_state" \
+    || is_expected_link "$settings_target" "$settings_source"; then
+    settings_existing="$settings_target"
+  elif [ -f "$settings_target" ]; then
+    if ! "$jq_bin" empty "$settings_target" >/dev/null 2>&1; then
+      printf 'dotfiles: refusing to replace invalid JSON settings: %s\n' "$settings_target" >&2
+      exit 1
+    fi
+    settings_existing="$settings_target"
+    settings_should_backup=true
+  else
+    backup_target "$settings_target" '.pi/agent/settings.json'
+  fi
+elif [ -f "$settings_state" ]; then
+  settings_existing="$settings_state"
+fi
+
+settings_tmp=$(mktemp "${settings_state}.tmp.XXXXXX")
+cleanup_settings_tmp() {
+  rm -f "$settings_tmp"
+}
+trap cleanup_settings_tmp EXIT
+if [ -n "$settings_existing" ]; then
+  if ! "$jq_bin" empty "$settings_existing" >/dev/null 2>&1; then
+    printf 'dotfiles: refusing to compose invalid JSON settings: %s\n' "$settings_existing" >&2
+    exit 1
+  fi
+  # shellcheck disable=SC2016
+  "$jq_bin" -s '
+    def deepmerge(a; b):
+      a as $a | b as $b |
+      if ($a | type) == "object" and ($b | type) == "object" then
+        reduce ($b | keys_unsorted[]) as $key
+          ($a; .[$key] = if has($key) then deepmerge(.[$key]; $b[$key]) else $b[$key] end)
+      else $b end;
+    deepmerge(.[0]; .[1])
+  ' "$settings_existing" "$settings_source" > "$settings_tmp"
+else
+  "$jq_bin" . "$settings_source" > "$settings_tmp"
+fi
+if [ "$settings_should_backup" = true ]; then
+  backup_target "$settings_target" '.pi/agent/settings.json'
+fi
+mv -f "$settings_tmp" "$settings_state"
+trap - EXIT
+
+while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_path; do
+  target="$HOME/$target_relative"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    if is_expected_link "$target" "$source_path"; then
+      continue
+    fi
+    backup_target "$target" "$target_relative"
+  fi
+done < "$manifest"
+
+if [ -n "$backup_root" ]; then
+  printf 'dotfiles: collision backups stored under %s\n' "$backup_root"
+fi
