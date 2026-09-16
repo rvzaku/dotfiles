@@ -2,17 +2,12 @@
 # Read-only health report for the dotfiles workspace.
 set -u
 
-resolve_root() {
-  local root
-  if root=$(git rev-parse --show-toplevel 2>/dev/null); then
-    printf '%s\n' "$root"
-    return 0
-  fi
-  if [ -n "${DOTFILES_ROOT:-}" ] && root=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
-    printf '%s\n' "$root"
-    return 0
-  fi
-  local script_path="${BASH_SOURCE[0]}" link script_dir
+resolve_script_root() {
+  local script_path="${BASH_SOURCE[0]}" link script_dir root
+  case "$script_path" in
+    /*) ;;
+    *) script_path="$PWD/$script_path" ;;
+  esac
   while [ -L "$script_path" ]; do
     script_dir=$(cd "$(dirname "$script_path")" 2>/dev/null && pwd -P) || return 1
     link=$(readlink "$script_path")
@@ -23,6 +18,19 @@ resolve_root() {
   done
   root=$(cd "$(dirname "$script_path")/../.." 2>/dev/null && pwd -P) || return 1
   git -C "$root" rev-parse --show-toplevel 2>/dev/null
+}
+
+resolve_root() {
+  local root
+  if [ -n "${DOTFILES_ROOT:-}" ] && root=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  if root=$(resolve_script_root); then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  git rev-parse --show-toplevel 2>/dev/null
 }
 
 ROOT=$(resolve_root 2>/dev/null || true)

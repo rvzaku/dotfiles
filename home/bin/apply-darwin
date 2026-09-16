@@ -106,14 +106,14 @@ trap cleanup EXIT
 NIX_BIN=$(command -v nix)
 set +e
 if [ "$mode" = --bootstrap ]; then
-  sudo env "DOTFILES_ROOT=$ROOT" "$NIX_BIN" run \
+  sudo env "DOTFILES_ROOT=$ROOT" "HOME=$HOME" "$NIX_BIN" run \
     github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
     switch --impure --flake "$ROOT#mac"
 else
   if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "DOTFILES_ROOT=$ROOT" darwin-rebuild switch --impure --flake "$ROOT#mac"
+    sudo env "DOTFILES_ROOT=$ROOT" "HOME=$HOME" darwin-rebuild switch --impure --flake "$ROOT#mac"
   else
-    sudo env "DOTFILES_ROOT=$ROOT" "$NIX_BIN" run \
+    sudo env "DOTFILES_ROOT=$ROOT" "HOME=$HOME" "$NIX_BIN" run \
       github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
       switch --impure --flake "$ROOT#mac"
   fi

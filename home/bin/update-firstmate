@@ -7,27 +7,31 @@ if [ ! -d "$repo/.git" ]; then
   printf 'firstmate: %s is not installed; update is unproven\n' "$repo" >&2
   exit 1
 fi
-if [ -n "$(git -C "$repo" status --porcelain -- . ':!config/crew-dispatch.json')" ]; then
-  printf '%s\n' 'firstmate: local edits present; refusing to update'
-  exit 0
-fi
 branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD || true)
-if [ -z "$branch" ]; then
-  printf '%s\n' 'firstmate: detached HEAD; refusing to update'
-  exit 0
-fi
 
 # Fetch directly from Kun even if a user changed the checkout's origin to a
 # fork. The dedicated remote-tracking ref does not rewrite remotes or work.
 upstream_url="${FIRSTMATE_UPSTREAM_URL:-https://github.com/kunchenguid/firstmate.git}"
 upstream_ref="refs/remotes/dotfiles-kun/$branch"
-if ! git -C "$repo" fetch --prune "$upstream_url" \
-  "refs/heads/$branch:$upstream_ref"; then
+if [ -n "$branch" ]; then
+  fetch_refspec="+refs/heads/$branch:$upstream_ref"
+else
+  fetch_refspec='+refs/heads/*:refs/remotes/dotfiles-kun/*'
+fi
+if ! git -C "$repo" fetch --prune "$upstream_url" "$fetch_refspec"; then
   printf '%s\n' 'firstmate: Kun upstream fetch failed; preserving the current checkout' >&2
   exit 1
 fi
+if [ -z "$branch" ]; then
+  printf '%s\n' 'firstmate: detached HEAD; fetched Kun refs and preserved checkout'
+  exit 0
+fi
 if ! git -C "$repo" show-ref --verify --quiet "$upstream_ref"; then
   printf 'firstmate: Kun upstream branch %s is unavailable; refusing to update\n' "$branch" >&2
+  exit 0
+fi
+if [ -n "$(git -C "$repo" status --porcelain -- . ':!config/crew-dispatch.json')" ]; then
+  printf '%s\n' 'firstmate: local edits present; refusing to update'
   exit 0
 fi
 

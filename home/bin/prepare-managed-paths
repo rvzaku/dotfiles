@@ -151,7 +151,7 @@ validate_parents() {
 while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_relative; do
   validate_target_relative "$target_relative"
   if ! validate_parents "$HOME/$target_relative"; then
-    continue
+    exit 1
   fi
   migrate_directory_link "$target_relative" "$source_relative"
 done < "$directories"
@@ -160,7 +160,7 @@ validate_parents "$settings_target"
 while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_path; do
   validate_target_relative "$target_relative"
   if ! validate_parents "$HOME/$target_relative"; then
-    continue
+    exit 1
   fi
 done < "$manifest"
 

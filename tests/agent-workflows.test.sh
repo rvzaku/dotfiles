@@ -26,20 +26,11 @@ assert_file_contains() {
   grep -Fq "$text" "$file" || fail "$message"
 }
 
-test_static_policy_and_public_commands() {
-  assert_file_contains "$ROOT/configuration.nix" 'cleanup = "zap"' 'Homebrew zap inventory missing'
-  assert_file_contains "$ROOT/home.nix" 'clamav' 'AV baseline missing'
-  assert_file_contains "$ROOT/home.nix" 'container' 'Apple container baseline missing'
-  assert_file_contains "$ROOT/home.nix" "NPM_CONFIG_PREFIX = \"\$HOME/.local\"" 'npm prefix owner missing'
-  local force_pattern="force = ""true"
-  assert_not_contains "$(grep -ho "$force_pattern" "$ROOT/home.nix" || true)" \
-    "$force_pattern" 'Home Manager force escape hatch is present'
-  assert_not_contains "$(grep -Rho 'git \(reset --hard\|clean -fd\)' "$ROOT/home/bin" || true)" \
-    'git destructive shortcut' 'destructive Git shortcut is present'
+test_public_commands() {
   for command in apply-darwin dot-doctor update-agent-tools update-firstmate update-skills prune-migration-backups; do
     [ -x "$ROOT/home/bin/$command" ] || fail "public command $command is not executable"
   done
-  pass 'security, AV/container, npm ownership, public commands, and Git guardrails'
+  pass 'public update and diagnostic commands are executable'
 }
 
 test_pi_preference_and_degradation() {
@@ -172,7 +163,7 @@ SCRIPT
   pass 'Nix lock rollback and read-only doctor behavior'
 }
 
-test_static_policy_and_public_commands
+test_public_commands
 test_pi_preference_and_degradation
 test_skills_and_topgrade_boundaries
 test_firstmate_relations

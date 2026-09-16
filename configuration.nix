@@ -1,5 +1,10 @@
 { user, ... }:
 
+let
+  runtimeHome = builtins.getEnv "HOME";
+  homeDirectory = if runtimeHome != "" then runtimeHome else "/Users/${user}";
+in
+
 {
   # Determinate already manages the Nix daemon, so nix-darwin shouldn't.
   nix.enable = false;
@@ -9,7 +14,7 @@
 
   system.primaryUser = user;
   users.users.${user} = {
-    home = "/Users/${user}";
+    home = homeDirectory;
   };
   system.stateVersion = 6;
   system.defaults = {

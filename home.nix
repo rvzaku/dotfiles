@@ -8,6 +8,15 @@
 }:
 
 let
+  runtimeHome = builtins.getEnv "HOME";
+  homeDirectory = if runtimeHome != "" then runtimeHome else "/Users/${user}";
+  backpassConfig =
+    let source = builtins.fromJSON (builtins.readFile ./home/.config/backpass/config.json);
+    in pkgs.writeText "backpass-config.json" (builtins.toJSON (source // {
+      user = source.user // {
+        skillsDir = "${dotfiles}/home/.agents/skills/backpass";
+      };
+    }));
   # The checkout is normally $HOME/dotfiles. apply-darwin.sh passes an
   # explicit root when a fixture or worktree lives elsewhere; this keeps
   # out-of-store links portable without creating a hidden alias.
@@ -43,7 +52,9 @@ let
     ) (builtins.attrNames entries);
 
   fileLink = sourceRelative: {
-    source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/${sourceRelative}";
+    source = if sourceRelative == ".config/backpass/config.json"
+      then backpassConfig
+      else config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/${sourceRelative}";
     # Collision adoption runs immediately before Home Manager's own check.
     # Do not use Home Manager's force escape hatch: unknown paths must remain
     # protected and a failed adoption must fail closed.
@@ -181,7 +192,7 @@ let
 in
 {
   home.username = user;
-  home.homeDirectory = "/Users/${user}";
+  home.homeDirectory = homeDirectory;
   home.stateVersion = "24.11";
 
   # Keep the complete developer toolchain in the Home Manager closure. The
@@ -407,7 +418,7 @@ in
     ${
       lib.concatMapStrings (
         pair:
-        "      printf '%s\\0%s\\0' ${lib.escapeShellArg pair.target} ${lib.escapeShellArg "${dotfiles}/home/${pair.source}"}\n"
+        "      printf '%s\\0%s\\0' ${lib.escapeShellArg pair.target} ${lib.escapeShellArg (if pair.source == ".config/backpass/config.json" then backpassConfig else "${dotfiles}/home/${pair.source}")}\n"
       ) managedPairs
     }    } > "$manifest"
         {
