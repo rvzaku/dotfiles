@@ -394,7 +394,6 @@ in
   home.activation.prepareManagedPaths = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
         manifest=$(mktemp)
         directories=$(mktemp)
-        trap 'rm -f "$manifest" "$directories"' EXIT
         {
     ${
       lib.concatMapStrings (
@@ -416,6 +415,7 @@ in
           --settings-state ${lib.escapeShellArg piSettingsState} \
           --settings-target ${lib.escapeShellArg piSettingsTarget} \
           --jq ${lib.escapeShellArg "${pkgs.jq}/bin/jq"}
+        rm -f "$manifest" "$directories"
   '';
 
   home.file = managedFiles;
