@@ -306,6 +306,9 @@ in
   home.sessionPath = [
     "$HOME/.local/bin"
     "$HOME/firstmate/bin"
+    "$HOME/.local/share/pnpm/bin"
+    # pnpm's global bin directory must be on PATH for Topgrade's package
+    # manager stage; keep it under the writable per-user Home Manager area.
     # npm's declared prefix is ~/.local; do not put an unmanaged npm prefix
     # ahead of it.
   ];
@@ -313,6 +316,7 @@ in
     EDITOR = "nvim";
     VISUAL = "nvim";
     NPM_CONFIG_PREFIX = "$HOME/.local";
+    PNPM_HOME = "$HOME/.local/share/pnpm";
   };
 
   # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
