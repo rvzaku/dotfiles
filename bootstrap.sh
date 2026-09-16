@@ -5,20 +5,35 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
+load_nix_profile() {
+  local profile=/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  if [ -r "$profile" ]; then
+    # shellcheck disable=SC1090
+    . "$profile"
+  fi
+}
+
+load_nix_profile
+
 echo "==> Step 1: Determinate Nix"
 if command -v nix >/dev/null 2>&1; then
   echo "    nix already installed, skipping"
 else
   curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix \
     | sh -s -- install --no-confirm
-  # shellcheck disable=SC1091
-  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  load_nix_profile
+fi
+
+if ! command -v nix >/dev/null 2>&1; then
+  echo "    Nix is installed but not available in this shell; open a new shell and rerun ./bootstrap.sh." >&2
+  exit 1
 fi
 
 echo "==> Step 2: symlink this repo to ~/.dotfiles"
 # home.nix resolves its mkOutOfStoreSymlink paths through ~/.dotfiles, so this
 # has to exist before the first switch or the build will fail to find them.
-ln -sfn "$DIR" ~/.dotfiles
+# Refuse an unrelated existing path instead of replacing it silently.
+"$DIR/home/bin/ensure-dotfiles-link" "$DIR" "$HOME/.dotfiles"
 
 echo "==> Step 2b: make Firstmate available"
 FIRSTMATE_DIR="${FIRSTMATE_HOME:-$HOME/firstmate}"

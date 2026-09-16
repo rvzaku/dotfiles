@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf 'usage: %s SOURCE_REPOSITORY DOTFILES_LINK\n' "$0" >&2
+}
+
+if [ "$#" -ne 2 ]; then
+  usage
+  exit 2
+fi
+source_dir=$(cd "$1" && pwd -P)
+link_path=$2
+
+if [ -L "$link_path" ] || [ -d "$link_path" ]; then
+  current_dir=$(cd "$link_path" 2>/dev/null && pwd -P || true)
+  if [ "$current_dir" = "$source_dir" ]; then
+    printf 'dotfiles: %s already points to %s\n' "$link_path" "$source_dir"
+    exit 0
+  fi
+  printf 'dotfiles: refusing to replace existing path %s\n' "$link_path" >&2
+  printf 'dotfiles: it resolves to %s; move it aside yourself if that is intentional\n' "${current_dir:-an unavailable target}" >&2
+  exit 1
+fi
+
+if [ -e "$link_path" ]; then
+  printf 'dotfiles: refusing to replace existing non-directory path %s\n' "$link_path" >&2
+  exit 1
+fi
+
+ln -s "$source_dir" "$link_path"
+printf 'dotfiles: linked %s to %s\n' "$link_path" "$source_dir"
