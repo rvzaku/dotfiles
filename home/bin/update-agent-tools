@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Topgrade may run in a shell opened before Home Manager updated PATH. Add the
+# declarative npm prefix and Firstmate bin explicitly so newly installed tools
+# are usable in this same run.
+npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local}"
+case "$npm_prefix" in
+  \$HOME/*) npm_prefix="$HOME/${npm_prefix#\$HOME/}" ;;
+esac
+export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
+
 # Deliberately update only when invoked by Topgrade (or explicitly by the
 # operator). Bootstrap and normal Home Manager activation stay pinned.
 if command -v npm >/dev/null 2>&1; then
-  NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-$HOME/.local}" npm install --global --no-fund --no-audit \
+  NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
     acpx@latest \
     gh-axi@latest \
     chrome-devtools-axi@latest \
