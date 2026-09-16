@@ -120,7 +120,10 @@ let
     }
   ];
 
-  managedPairs = [
+  # Single source of truth for the explicit (non-directoryRoots) managed
+  # leaves: both the bash backup manifest and the Home Manager file map are
+  # derived from this list so they cannot drift out of sync.
+  explicitPairs = [
     {
       source = ".config/backpass/config.json";
       target = ".config/backpass/config.json";
@@ -157,21 +160,20 @@ let
       source = ".pi/agent/models.json";
       target = ".pi/agent/models.json";
     }
-  ]
-  ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
+  ];
+
+  managedPairs =
+    explicitPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
 
   managedFiles =
     (lib.foldl' (acc: root: acc // directoryLinks root.source root.target) { } directoryRoots)
+    // lib.listToAttrs (
+      map ({ source, target }: {
+        name = target;
+        value = fileLink source;
+      }) explicitPairs
+    )
     // {
-      "firstmate/config/crew-dispatch.json" = fileLink ".config/firstmate/crew-dispatch.json";
-      ".config/backpass/config.json" = fileLink ".config/backpass/config.json";
-      ".claude/settings.json" = fileLink ".claude/settings.json";
-      ".claude/CLAUDE.md" = fileLink "AGENTS.md";
-      ".agents/AGENTS.md" = fileLink "AGENTS.md";
-      ".codex/AGENTS.md" = fileLink "AGENTS.md";
-      ".codex/config.toml" = fileLink ".codex/config.toml";
-      ".config/opencode/AGENTS.md" = fileLink "AGENTS.md";
-      ".pi/agent/models.json" = fileLink ".pi/agent/models.json";
       ".pi/agent/settings.json" = {
         source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
         force = true;
