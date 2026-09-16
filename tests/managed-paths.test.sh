@@ -93,8 +93,24 @@ backup_roots_after=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager
   -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
 [ "$backup_roots_before" = "$backup_roots_after" ] || fail "rerun created a duplicate backup"
 
-grep -q 'entryBefore \[ "checkLinkTargets" \]' "$ROOT/home.nix" \
-  || fail "managed-path preparation is not ordered before collision checks"
+command -v nix >/dev/null 2>&1 || fail "nix is required to verify activation ordering"
+activation_order=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
+  "$ROOT#darwinConfigurations.mac.config.home-manager.users.kunchen" \
+  --apply '
+    cfg:
+    let
+      sorted = cfg.lib.dag.topoSort cfg.home.activation;
+    in
+      if sorted ? result then map (e: e.name) sorted.result else throw "activation dag has a cycle"
+  ') || fail "could not evaluate the real Home Manager activation order"
+prepare_index=$(printf '%s' "$activation_order" | jq 'index("prepareManagedPaths")')
+check_index=$(printf '%s' "$activation_order" | jq 'index("checkLinkTargets")')
+[ "$prepare_index" != "null" ] \
+  || fail "prepareManagedPaths is missing from the resolved activation dag"
+[ "$check_index" != "null" ] \
+  || fail "checkLinkTargets is missing from the resolved activation dag"
+[ "$prepare_index" -lt "$check_index" ] \
+  || fail "managed-path preparation does not run before Home Manager's collision check"
 nix-instantiate --parse "$ROOT/home.nix" >/dev/null \
   || fail "home.nix does not parse"
 bash -n "$ROOT/home/bin/prepare-managed-paths" \
