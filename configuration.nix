@@ -1,5 +1,10 @@
 { user, ... }:
 
+let
+  runtimeHome = builtins.getEnv "HOME";
+  homeDirectory = if runtimeHome != "" then runtimeHome else "/Users/${user}";
+in
+
 {
   # Determinate already manages the Nix daemon, so nix-darwin shouldn't.
   nix.enable = false;
@@ -9,7 +14,7 @@
 
   system.primaryUser = user;
   users.users.${user} = {
-    home = "/Users/${user}";
+    home = homeDirectory;
   };
   system.stateVersion = 6;
   system.defaults = {
@@ -31,8 +36,10 @@
   };
   homebrew = {
     enable = true;
+    taps = [ "kunchenguid/tap" ];
     onActivation.cleanup = "zap"; # remove anything not listed here
-    onActivation.autoUpdate = true;
+    # Topgrade owns latest-version updates; switches remain reproducible.
+    onActivation.autoUpdate = false;
     onActivation.extraFlags = [ "--force" ];
     brews = [
       "herdr"
@@ -42,6 +49,9 @@
       "claude-code"
       "codex"
       "google-chrome"
+      # Signed Pi is preferred by the wrapper; the plain Pi package remains
+      # the fallback when this optional launcher is unavailable.
+      "kunchenguid/tap/pi-launcher"
     ];
   };
 }

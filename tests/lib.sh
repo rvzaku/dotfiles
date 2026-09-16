@@ -31,7 +31,7 @@ DOTFILES_TEST_CLEANUP_DIRS=()
 dotfiles_test_cleanup() {
   local d
   for d in "${DOTFILES_TEST_CLEANUP_DIRS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
+    [ -n "$d" ] && rm -r -- "$d"
   done
 }
 

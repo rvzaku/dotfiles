@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Read-only health report for the dotfiles workspace.
+set -u
+
+resolve_script_root() {
+  local script_path="${BASH_SOURCE[0]}" link script_dir root
+  case "$script_path" in
+    /*) ;;
+    *) script_path="$PWD/$script_path" ;;
+  esac
+  while [ -L "$script_path" ]; do
+    script_dir=$(cd "$(dirname "$script_path")" 2>/dev/null && pwd -P) || return 1
+    link=$(readlink "$script_path")
+    case "$link" in
+      /*) script_path=$link ;;
+      *) script_path="$script_dir/$link" ;;
+    esac
+  done
+  root=$(cd "$(dirname "$script_path")/../.." 2>/dev/null && pwd -P) || return 1
+  git -C "$root" rev-parse --show-toplevel 2>/dev/null
+}
+
+resolve_root() {
+  local root
+  if [ -n "${DOTFILES_ROOT:-}" ] && root=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  if root=$(resolve_script_root); then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  git rev-parse --show-toplevel 2>/dev/null
+}
+
+ROOT=$(resolve_root 2>/dev/null || true)
+if [ -z "$ROOT" ]; then
+  printf '%s\n' 'dot-doctor: FAIL - this command is not inside a dotfiles checkout' >&2
+  exit 1
+fi
+
+problems=0
+degraded=0
+pass_check() { printf 'dot-doctor: PASS - %s\n' "$1"; }
+fail_check() { printf 'dot-doctor: FAIL - %s\n' "$1" >&2; problems=$((problems + 1)); }
+degraded_check() { printf 'dot-doctor: DEGRADED - %s\n' "$1" >&2; degraded=$((degraded + 1)); }
+
+if [ -f "$ROOT/flake.lock" ]; then
+  pass_check 'flake.lock is present'
+else
+  fail_check 'flake.lock is missing'
+fi
+if [ -f "$ROOT/configuration.nix" ] && [ -f "$ROOT/home.nix" ]; then
+  pass_check 'nix-darwin and Home Manager configuration are present'
+else
+  fail_check 'nix configuration is incomplete'
+fi
+if grep -q 'cleanup = "zap"' "$ROOT/configuration.nix"; then
+  pass_check 'Homebrew zap is declared and documented as destructive cleanup'
+else
+  fail_check 'Homebrew cleanup policy is not explicit'
+fi
+
+legacy_alias="$HOME/.${DOTFILES_LEGACY_ALIAS_NAME:-dotfiles}"
+if [ -e "$legacy_alias" ] || [ -L "$legacy_alias" ]; then
+  fail_check "legacy hidden alias exists; use \$HOME/dotfiles or DOTFILES_ROOT"
+else
+  pass_check 'no legacy hidden dotfiles alias exists'
+fi
+
+tracked_runtime=$(git -C "$ROOT" ls-files | grep -E '(^|/)(auth|trust|sessions?|state|npm)/|(^|/)(auth|trust)\.json$' || true)
+if [ -z "$tracked_runtime" ]; then
+  pass_check 'runtime, authentication, and session paths are not tracked'
+else
+  fail_check "runtime paths are tracked: $tracked_runtime"
+fi
+
+for tool in git nix; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    pass_check "$tool is available"
+  else
+    degraded_check "$tool is unavailable"
+  fi
+done
+if command -v pi-signed >/dev/null 2>&1; then
+  pass_check 'pi-signed is available (preferred Pi backend)'
+elif command -v pi >/dev/null 2>&1; then
+  degraded_check 'pi-signed is unavailable; using unsigned pi fallback'
+else
+  degraded_check 'Pi is unavailable; Pi-dependent workflows are unproven'
+fi
+for tool in herdr topgrade treehouse no-mistakes clamscan container; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    pass_check "$tool is available"
+  else
+    degraded_check "$tool is unavailable"
+  fi
+done
+
+if [ "$problems" -gt 0 ]; then
+  printf 'dot-doctor: FAIL - %s blocking issue(s), %s degraded check(s)\n' "$problems" "$degraded" >&2
+  exit 1
+fi
+printf 'dot-doctor: OK - no blocking issues; %s degraded check(s) remain unproven\n' "$degraded"
+exit 0

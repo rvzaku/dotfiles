@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Update every globally registered skill through the skills.sh registry.
+# A missing registry/client is a reported degradation, not a reason to abort
+# unrelated Topgrade work.
+set -u
+
+if ! command -v skills >/dev/null 2>&1; then
+  printf '%s\n' 'skills: global skills client unavailable; global skill update is unproven' >&2
+  exit 1
+fi
+
+if skills update --global --yes; then
+  printf '%s\n' 'skills: updated all globally registered skills'
+else
+  status=$?
+  printf 'skills: global update failed (exit %s); existing skills were left in place\n' "$status" >&2
+  exit "$status"
+fi

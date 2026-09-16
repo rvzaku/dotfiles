@@ -44,7 +44,7 @@ Running the switch builds:
 On a brand new Mac, from a bare clone of this repo:
 
 ```sh
-git clone https://github.com/kunchenguid/dotfiles.git
+git clone https://github.com/rvzaku/dotfiles.git
 cd dotfiles
 ```
 
@@ -59,12 +59,13 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 `bootstrap.sh` does six things, in order:
 
 1. Installs Determinate Nix, if it isn't already installed.
-2. Symlinks this repo to `~/.dotfiles`.
-   This has to happen before the first build, because `home.nix` points at config files through `~/.dotfiles`.
+2. Uses this checkout as the source of truth. `$HOME/dotfiles` is the normal
+   primary location; a disposable clone at any absolute path also works, and
+   no hidden dotfiles alias is created.
 3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
 4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
 5. Runs the first `darwin-rebuild switch`.
-   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
+   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config. Home Manager adopts only the declared leaf files, preserving existing directories and backing up replaced files under `~/.local/state/dotfiles/backups/home-manager/`.
 6. Verifies the pinned global agent npm tools are on `PATH` and installs `no-mistakes` and `treehouse` from their official installers if either is missing.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
@@ -80,6 +81,14 @@ nix build .#darwinConfigurations.mac.system --dry-run
 
 If you renamed the host label in "Make it yours", substitute your label for `mac` in these commands.
 
+The collision-adoption fixture checks first activation, rerun idempotence,
+byte-preserving backups, Pi hook composition, and Nix syntax:
+
+```sh
+tests/managed-paths.test.sh
+tests/agent-workflows.test.sh
+```
+
 ## Daily use
 
 Edit the config files in place, then apply:
@@ -91,6 +100,12 @@ Edit the config files in place, then apply:
 That's it.
 No separate build-and-copy step.
 
+`./rebuild.sh` is safe to rerun after an interrupted bootstrap and does not
+replace or remove any user path. The
+same pinned npm tools and wrappers are available in a fresh login through
+`~/.local/bin` and `~/firstmate/bin`; `update-agent-tools` also adds those
+directories when Topgrade runs from an older shell.
+
 ## Make it yours
 
 This repo is mine.
@@ -98,8 +113,8 @@ If you clone it, review these before you run `bootstrap.sh`:
 
 - **Username**: run `./bootstrap.sh` (it detects your macOS username and offers to set it) OR change the single `user = "kunchen"` line in `flake.nix`.
   Everything else (`configuration.nix`, `home.nix`, home directory paths) is threaded from that one variable.
-- **Host label** `"mac"`, in three places: `flake.nix` (the `darwinConfigurations."mac"` name), `rebuild.sh:5` (the `#mac` at the end of the flake reference), and `bootstrap.sh`'s first-switch command (also `#mac`).
-  All three have to match.
+- **Host label** `"mac"`, in `flake.nix` and the shared `home/bin/apply-darwin` helper. Keep those references aligned if you rename it.
+  Keep the host label consistent wherever it appears.
 - **CPU architecture**, `hostPlatform` in `configuration.nix` (see Prerequisites above).
 
 **Git identity:** this config deliberately does not set your git name or email.
@@ -145,7 +160,11 @@ If you don't use it, just remove it from `brews` in your copy.
 ## How the symlinks work
 
 The files under `home/` are the real files - editing them here is editing your live config, no rebuild needed to see the change in your editor.
-`home.nix` uses `mkOutOfStoreSymlink` to point paths like `~/.config/nvim` straight at `home/.config/nvim` in this repo, so the two never drift out of sync.
+`home.nix` uses additive leaf `mkOutOfStoreSymlink` links, so paths like
+`~/.config/nvim` read from this repo without replacing a pre-existing config
+directory. Existing files at declared leaves are moved byte-for-byte to a
+unique backup directory before replacement; older backups are never
+overwritten. Files and resources not declared by this repo remain untouched.
 You only run `./rebuild.sh` when you change something that isn't just a symlinked file, like a package list or a system default.
 
 ## Global agent foundation
@@ -173,17 +192,29 @@ configured writable source is this checkout's `home/AGENTS.md` and
 Pi is declared in `home.packages` and its pinned package resources are managed
 by `home/.pi/agent/settings.json`.
 
-[Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is also optional and installed from its owner, not declared by this config:
+[Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is declared from its owner tap so the signed launcher can be preferred:
 
 ```sh
 brew install --cask kunchenguid/tap/pi-launcher
 ```
 
-Home Manager owns exactly two repository-authored Pi directories: `~/.pi/agent/themes` and `~/.pi/agent/extensions`. It also links `models.json` and `settings.json` as individual files. The local extension directory is for public, repository-authored extensions only - third-party package code never belongs there. Run `/reload` after editing a local extension or other Pi resources. The terminal-title extension shows a spinner while Pi is working, then a completion mark with the session name or current directory. The `rose-pine-moon` theme was authored clean-room from the public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's [public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
+Home Manager owns repository-authored Pi leaves below `~/.pi/agent/themes` and
+`~/.pi/agent/extensions`, not those directories themselves. Existing themes
+and extensions not in this repo stay active. It also links `models.json` and a
+composed `settings.json` as individual files. Existing Pi settings are backed
+up and merged with the repository settings, with repository keys taking
+precedence while unknown nested settings such as hooks remain active. The
+local extension directory is for public, repository-authored extensions only -
+third-party package code never belongs there. Run `/reload` after editing a
+local extension or other Pi resources. The terminal-title extension shows a
+spinner while Pi is working, then a completion mark with the session name or
+current directory. The `rose-pine-moon` theme was authored clean-room from the
+public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's
+[public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
 
 ### Pi Calm
 
-`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Home Manager's existing global extensions-directory link makes Pi auto-load it without another declaration. `/calm` toggles a conversation-only presentation mode and is off by default. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency.
+`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Home Manager links its files additively into `~/.pi/agent/extensions`, so Pi auto-loads it without another declaration. `/calm` toggles a conversation-only presentation mode and is off by default. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency.
 
 When enabled, Calm hides collapsed thinking and the call/result shells for Pi's seven built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`) without leaving blank transcript rows. During an active run it replaces Pi's working row with a two-line animated blue-water, yellow-boat widget. `/calm` restores Pi's stock rendering and preserves the existing Ctrl+O tool-expansion choice.
 
@@ -207,6 +238,24 @@ The first time you launch `nvim`, it bootstraps [lazy.nvim](https://github.com/f
 That needs network access once; after that it's offline.
 Neovim and WezTerm both use the rose-pine moon theme.
 Neovim keeps italics off and uses a transparent background on macOS, Windows, and WSL so it matches the terminal setup.
+
+## Ownership and fork delta
+
+| Component | Owner | Mutable state |
+| --- | --- | --- |
+| Nix, nix-darwin, Home Manager, nix-homebrew | `flake.nix`, `configuration.nix`, `home.nix` | `flake.lock` is reviewed and rolled back on failed switches |
+| Homebrew inventory and zap warning | `configuration.nix`, `home/bin/apply-darwin` | Homebrew's own database |
+| Agent npm tools and Skills updates | `home.nix`, `home/bin/update-agent-tools`, `home/bin/update-skills` | npm prefix and global Skills registry under `$HOME` |
+| Firstmate and Herdr | `bootstrap.sh`, `home/bin/update-firstmate`, `home/.config/herdr` | `$FIRSTMATE_HOME` and Herdr runtime state |
+| Agent resources and vendor Skills | `home/`, `home/.agents/skills` | Auth, sessions, caches, and package trees stay outside Git |
+| Collision adoption and migrations | `home/bin/prepare-managed-paths` | `$XDG_STATE_HOME/dotfiles/backups/home-manager` |
+
+This is a minimal fork of Kun's current architecture. The intentional delta is
+portable checkout-root injection for arbitrary worktrees, additive collision
+adoption with byte-preserving backups, Pi signed-launcher preference and
+fallback, explicit security/container packages, read-only `dot-doctor`, and
+safe full-update helpers. Existing agent resources remain vendor-owned unless
+the table above names this checkout as their owner.
 
 ## License
 
