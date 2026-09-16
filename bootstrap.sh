@@ -20,6 +20,17 @@ echo "==> Step 2: symlink this repo to ~/.dotfiles"
 # has to exist before the first switch or the build will fail to find them.
 ln -sfn "$DIR" ~/.dotfiles
 
+echo "==> Step 2b: make Firstmate available"
+FIRSTMATE_DIR="${FIRSTMATE_HOME:-$HOME/firstmate}"
+if [ -d "$FIRSTMATE_DIR/.git" ]; then
+  echo "    Firstmate already exists at $FIRSTMATE_DIR, preserving it."
+elif [ -e "$FIRSTMATE_DIR" ]; then
+  echo "    $FIRSTMATE_DIR exists but is not a Git checkout; refusing to replace it."
+  exit 1
+else
+  git clone https://github.com/kunchenguid/firstmate.git "$FIRSTMATE_DIR"
+fi
+
 echo "==> Step 3: personalize the configured username"
 # Do this before any sudo call: sudo resets $USER to root, so whoami has to
 # run as the real interactive user first.
@@ -57,6 +68,10 @@ NIX_BIN="$(command -v nix)"
 # and rebuild.sh too.
 sudo "$NIX_BIN" run github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
   switch --flake ~/.dotfiles#mac
+
+echo "==> Step 5: verify global agent tools"
+export PATH="$HOME/.local/bin:/etc/profiles/per-user/$REAL_USER/bin:/run/current-system/sw/bin:$PATH"
+"$DIR/home/bin/ensure-agent-tools" --install
 # If this still fails with "nix: command not found", open a new terminal
 # (Determinate adds nix to new shells' PATH) and re-run ./bootstrap.sh.
 

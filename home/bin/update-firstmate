@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo="${FIRSTMATE_HOME:-$HOME/firstmate}"
+if [ ! -d "$repo/.git" ]; then
+  printf 'firstmate: %s is not installed; skipping update\n' "$repo"
+  exit 0
+fi
+if [ -n "$(git -C "$repo" status --porcelain -- . ':!config/crew-dispatch.json')" ]; then
+  printf 'firstmate: local edits present; refusing to update\n'
+  exit 0
+fi
+branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD || true)
+if [ -z "$branch" ]; then
+  printf 'firstmate: detached HEAD; refusing to update\n'
+  exit 0
+fi
+git -C "$repo" fetch --prune origin
+remote_ref="refs/remotes/origin/$branch"
+if ! git -C "$repo" show-ref --verify --quiet "$remote_ref"; then
+  printf 'firstmate: origin/%s is unavailable; refusing to update\n' "$branch"
+  exit 0
+fi
+if ! git -C "$repo" merge-base --is-ancestor HEAD "$remote_ref"; then
+  printf 'firstmate: local history diverges from origin/%s; refusing to update\n' "$branch"
+  exit 0
+fi
+if git -C "$repo" diff --quiet HEAD "$remote_ref"; then
+  printf 'firstmate: already current\n'
+else
+  git -C "$repo" merge --ff-only "$remote_ref"
+  printf 'firstmate: fast-forwarded to %s\n' "$(git -C "$repo" rev-parse --short HEAD)"
+fi

@@ -25,12 +25,13 @@ Running the switch builds:
 
 - System settings (dark mode, key repeat, dock, Finder, trackpad)
 - Homebrew apps (casks and CLI tools)
-- Nix user packages (ripgrep, fd, fzf, jq, lazygit, Neovim, Hack Nerd Font)
+- Nix user packages (CLI utilities, runtimes, language servers, Pi, and Nerd Fonts)
 - Shell (zsh, aliases, starship prompt)
 - Editor (Neovim config with the rose-pine moon theme)
 - Terminal (WezTerm config with the rose-pine moon theme and dimmed unfocused windows)
-- Agent configs (Claude, Codex, opencode all share one AGENTS.md)
-- Optional Pi theme and local extensions, generic UI settings and model overrides, plus two deliberately pinned third-party Pi packages
+- Agent configs (Claude, Codex, OpenCode, and Pi all share one AGENTS.md)
+- Global agent tools and skills (Firstmate, no-mistakes, treehouse, AXI tools, Backpass, Matt Pocock, Impeccable, and Remote Pi)
+- Declarative yolo launch posture with independent validation and escalation boundaries
 
 ## Prerequisites
 
@@ -55,14 +56,16 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 ./bootstrap.sh
 ```
 
-`bootstrap.sh` does four things, in order:
+`bootstrap.sh` does six things, in order:
 
 1. Installs Determinate Nix, if it isn't already installed.
 2. Symlinks this repo to `~/.dotfiles`.
    This has to happen before the first build, because `home.nix` points at config files through `~/.dotfiles`.
-3. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
-4. Runs the first `darwin-rebuild switch`.
+3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
+4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
+5. Runs the first `darwin-rebuild switch`.
    It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
+6. Verifies the pinned global agent npm tools are on `PATH` and installs `no-mistakes` and `treehouse` from their official installers if either is missing.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 
@@ -124,9 +127,9 @@ If you don't use it, just remove it from `brews` in your copy.
 
 **Heads-up:**
 
-- `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, and opencode.
+- `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, OpenCode, and Pi.
   If you clone this repo, you'd silently inherit my agent instructions - edit or delete `home/AGENTS.md` if you don't want that.
-- The `cc` and `co` shell aliases in `home.nix` are high-agency shortcuts: `claude --dangerously-skip-permissions` and `codex --full-auto`.
+- The `cc`, `co`, `oc`, `gp`, `cu`, and `py` shell aliases in `home.nix` run the `agent-*-yolo` wrappers in `home/bin/` - high-agency shortcuts that skip each tool's own approval prompts (see "Global agent foundation" below).
   They're convenient for me, but know what they do before you use them.
 
 ## Repo tour
@@ -145,13 +148,30 @@ The files under `home/` are the real files - editing them here is editing your l
 `home.nix` uses `mkOutOfStoreSymlink` to point paths like `~/.config/nvim` straight at `home/.config/nvim` in this repo, so the two never drift out of sync.
 You only run `./rebuild.sh` when you change something that isn't just a symlinked file, like a package list or a system default.
 
-## Optional Pi configuration
+## Global agent foundation
 
-Pi is an opt-in CLI, not a dependency this repository vendors. Install it from its owner with the [official Pi instructions](https://pi.dev), for example:
+Home Manager installs Pi, the pinned AXI/Backpass/Remote Pi npm tools, and the
+global skill tree. Firstmate remains an agent distribution rather than a CLI;
+`bootstrap.sh` makes the upstream checkout available at `~/firstmate` and adds
+its `bin/` directory to PATH. The global `home/.config/firstmate/crew-dispatch.json`
+is linked into Firstmate's local `config/` directory and uses quota-aware profile
+arrays for image generation, difficult design/architecture/planning, defined bug
+fixes, and the default Pi profile.
 
-```sh
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
+Claude, Codex, OpenCode, Grok, Cursor, and Pi have yolo wrappers for autonomous
+execution. This does not bypass independent tests, no-mistakes, or escalation
+boundaries. Topgrade is the only routine latest-version update path for these
+tools; normal Home Manager activation installs the pinned bootstrap versions.
+
+Backpass user-scope state is private under `~/.config/backpass/user/`; its
+configured writable source is this checkout's `home/AGENTS.md` and
+`home/.agents/skills/backpass`. Use `backpass --scope user --strict` followed by
+`backpass-apply-qualified` to learn and apply only evidence-gated changes.
+
+## Pi configuration
+
+Pi is declared in `home.packages` and its pinned package resources are managed
+by `home/.pi/agent/settings.json`.
 
 [Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is also optional and installed from its owner, not declared by this config:
 
@@ -169,10 +189,11 @@ When enabled, Calm hides collapsed thinking and the call/result shells for Pi's 
 
 Calm never changes prompts, tool execution, model context, session data, or ordering. `/share` and `/export` use the complete stock transcript. Generic custom tools, images, and unsupported Pi transcript classes deliberately remain visible because Pi has no safe general-purpose transcript filter. If a future Pi release no longer exports the exact collapsed-thinking rendering seam, Calm logs one diagnostic and leaves only that adapter disabled; all other behavior remains available.
 
-Pi's package system declares two third-party sources in the linked global `settings.json`:
+Pi's package system declares three third-party sources in the linked global `settings.json`:
 
 - `npm:pi-web-access@0.14.0` - the exact public npm release for web access.
 - `npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6` - the exact public npm release from `ryan_nookpi`.
+- `npm:remote-pi@0.7.0` - the pinned Remote Pi extension and agent-network package.
 
 The versions are immutable pins, so Pi does not move them during package updates. Deliberate updates require a new source and security audit, followed by an explicit pin change in `home/.pi/agent/settings.json`. On Pi 0.82.0, global settings declarations install missing pinned packages automatically at startup. No one-time install command is required. Pi keeps the downloaded npm package trees in its own unmanaged `~/.pi/agent/npm` runtime directory, outside Home Manager and Git tracking.
 

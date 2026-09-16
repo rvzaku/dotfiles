@@ -17,3 +17,17 @@ result-*
 
 # no-mistakes local validation state - never commit in this public repo
 .no-mistakes/
+
+# Backpass project/user evidence and runtime state (never commit)
+.backpass/
+home/.config/backpass/user/
+home/.config/backpass/*.log
+
+# Firstmate runtime state is external to the authored dispatch profile
+home/.config/firstmate/state/
+
+# Pi package downloads, trust, credentials, sessions, and remote-pi state
+home/.pi/agent/npm/
+home/.pi/agent/trust.json
+home/.pi/agent/sessions/
+home/.pi/remote/
