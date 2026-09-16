@@ -78,6 +78,29 @@ test_skills_and_topgrade_boundaries() {
   pass 'Skills registry update and full-versus-targeted update boundaries'
 }
 
+test_npm_prefix_fallback() {
+  local log="$TMP_ROOT/npm-prefix.log" output
+  mkdir -p "$TMP_ROOT/npm-home/.local/bin"
+  cat >"$FAKE/npm" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "${NPM_CONFIG_PREFIX:?}" > "${NPM_PREFIX_LOG:?}"
+SCRIPT
+  chmod +x "$FAKE/npm"
+  for command in no-mistakes treehouse skills update-firstmate prune-migration-backups; do
+    fake_command "$command"
+  done
+  cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
+  output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
+    NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
+    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") \
+    || fail 'Nix npm prefix prevented the full update transaction'
+  [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local" ] \
+    || fail 'full update retained a read-only Nix npm prefix'
+  assert_contains "$output" 'complete update transaction finished' \
+    'Nix npm prefix fallback did not complete the transaction'
+  pass 'agent updates replace a read-only Nix npm prefix with a writable user prefix'
+}
+
 test_firstmate_relations() {
   local src="$TMP_ROOT/firstmate-source" remote="$TMP_ROOT/firstmate-remote.git" fm="$TMP_ROOT/firstmate" branch
   mkdir -p "$src"
@@ -166,5 +189,6 @@ SCRIPT
 test_public_commands
 test_pi_preference_and_degradation
 test_skills_and_topgrade_boundaries
+test_npm_prefix_fallback
 test_firstmate_relations
 test_lock_rollback_and_doctor_read_only
