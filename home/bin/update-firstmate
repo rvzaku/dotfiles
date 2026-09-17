@@ -85,28 +85,28 @@ resolve_pi_signed() {
   local candidate
   if [ "${PI_SIGNED_BIN+x}" = x ]; then
     if [ -x "$PI_SIGNED_BIN" ] && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
-      printf '%s\n' 'pi-signed'
+      printf '%s\n' "$PI_SIGNED_BIN"
       return 0
     fi
   fi
   if candidate=$(command -v pi-signed 2>/dev/null) && [ -x "$candidate" ] \
     && "$candidate" --version >/dev/null 2>&1; then
-    printf '%s\n' 'pi-signed'
+    printf '%s\n' "$candidate"
     return 0
   fi
   for candidate in /opt/homebrew/bin/pi-signed /usr/local/bin/pi-signed; do
     if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
-      printf '%s\n' 'pi-signed'
+      printf '%s\n' "$candidate"
       return 0
     fi
   done
   if candidate=$(command -v pi 2>/dev/null) && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
-    printf '%s\n' 'pi'
+    printf '%s\n' "$candidate"
     return 0
   fi
   for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
     if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
-      printf '%s\n' 'pi'
+      printf '%s\n' "$candidate"
       return 0
     fi
   done

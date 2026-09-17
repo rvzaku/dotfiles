@@ -212,9 +212,10 @@ let
     let
       evaluationHome = builtins.getEnv "DOTFILES_HOME";
       targetPath = "${homeDirectory}/${target}";
+      targetType = builtins.tryEval (builtins.readFileType targetPath);
     in evaluationHome != ""
-      && builtins.pathExists targetPath
-      && builtins.readFileType targetPath == "symlink";
+      && targetType.success
+      && targetType.value == "symlink";
 
   managedPairs =
     explicitPairs ++ publicBinPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
