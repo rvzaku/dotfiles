@@ -44,22 +44,20 @@ pinning an x86_64 installer.
 
 ## Fresh-machine setup
 
-On a brand-new Apple-Silicon Mac with no CLT, Git, Nix, Homebrew, AV, or
-GitHub authentication, download the pinned bootstrap script, verify its
-recorded SHA-256, and let it install CLT before obtaining the public checkout:
+On a brand-new Apple-Silicon Mac, install Apple's Command Line Tools, clone
+the public checkout over HTTPS from `main`, and start bootstrap:
 
 ```sh
-/usr/bin/curl --proto '=https' --tlsv1.2 -fsSLo /tmp/dotfiles-bootstrap.sh \
-  https://raw.githubusercontent.com/rvzaku/dotfiles/2dbd65a3bd7a4f0074115fd709028076646e2184/bootstrap.sh
-printf '%s  %s\n' '3fe574758e99750beaf6fa4d62324656a151a890186a8a5f1bc48eaee025dd15' /tmp/dotfiles-bootstrap.sh | /usr/bin/shasum -a 256 -c -
-/bin/bash /tmp/dotfiles-bootstrap.sh --from-scratch
+/usr/bin/xcode-select --install
+/usr/bin/git clone --branch main https://github.com/rvzaku/dotfiles ~/dotfiles
+cd ~/dotfiles
+./bootstrap.sh
 ```
 
-The script clones `~/dotfiles` over public HTTPS, derives the local username
-and hostname, and re-enters `./bootstrap.sh`; no manual pre-step or GitHub
-login is required. Existing `~/dotfiles` is never replaced. Read the zap,
-credential, and privacy prompts as they appear; rerun the same command after
-an interruption.
+Bootstrap derives the local username and hostname; no GitHub login is required
+before it reaches the real OAuth gate. Existing `~/dotfiles` is never replaced
+when resuming a valid checkout. Read the zap, credential, and privacy prompts
+as they appear; rerun the same command after an interruption.
 
 `bootstrap.sh` performs the complete ordered setup: Apple Command Line Tools;
 Determinate Nix and locked-flake validation; the first darwin-rebuild (including
@@ -198,7 +196,7 @@ Claude, Codex, OpenCode, Grok, and Pi retain adapters for their officially
 supported interfaces. This does not install OpenCode or Grok clients merely
 because an adapter exists, and wrappers do not bypass independent tests,
 no-mistakes, or escalation boundaries. Topgrade is the routine latest-version
-update path; normal Home Manager activation installs pinned bootstrap versions.
+update path; normal Home Manager activation installs declared software.
 Only documented wrappers, doctor, `ensure-agent-tools`, and update commands are
 linked into `~/.local/bin`; internal adoption and backup helpers stay private.
 

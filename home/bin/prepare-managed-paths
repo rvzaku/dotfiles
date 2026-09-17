@@ -93,6 +93,35 @@ is_expected_link() {
   return 1
 }
 
+directory_mode() {
+  local mode
+  mode=$(stat -f '%OLp' "$1" 2>/dev/null || true)
+  case "$mode" in
+    ''|*[!0-7]*) mode=$(stat -c '%a' "$1" 2>/dev/null) || return 1 ;;
+  esac
+  printf '%s\n' "$mode"
+}
+
+recover_directory_migrations() {
+  local journal target backup staging
+  [ -d "$backup_base" ] || return 0
+  for journal in "$backup_base"/*/directory-migration-*; do
+    [ -f "$journal" ] || continue
+    IFS=$'\t' read -r target backup staging <"$journal" || return 1
+    case "$target" in "$HOME"/*) ;; *) return 1 ;; esac
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      [ ! -e "$staging" ] && [ ! -L "$staging" ] || rm -rf -- "$staging"
+    elif [ -e "$staging" ] || [ -L "$staging" ]; then
+      mv -- "$staging" "$target" || return 1
+    elif [ -e "$backup" ] || [ -L "$backup" ]; then
+      mv -- "$backup" "$target" || return 1
+    else
+      return 1
+    fi
+    rm -f -- "$journal" || return 1
+  done
+}
+
 # Migrate an old whole-directory link before leaf links are installed. Copying
 # its contents makes repository resources and local additions available in the
 # new real directory; the original directory link is retained in backup. The old
@@ -101,7 +130,7 @@ is_expected_link() {
 migrate_directory_link() {
   local target_relative=$1 source_directory=$2
   local target="$HOME/$target_relative"
-  local resolved_source expected_source staging
+  local resolved_source expected_source staging source_mode journal backup_destination
   [ -L "$target" ] || return 0
   [ -d "$target" ] || return 0
   resolved_source=$(cd -P "$target" 2>/dev/null && pwd -P || true)
@@ -110,19 +139,26 @@ migrate_directory_link() {
     printf 'dotfiles: preserving unexpected directory link %s\n' "$target" >&2
     return 0
   fi
+  source_mode=$(directory_mode "$resolved_source") || return 1
   ensure_backup_root
   staging="$HOME/$(dirname "$target_relative")/dotfiles-migrate-$$-$RANDOM"
+  mkdir -p "$backup_root/directories/$(dirname "$target_relative")"
+  backup_destination="$backup_root/directories/$target_relative"
+  journal="$backup_root/directory-migration-$RANDOM"
+  printf '%s\t%s\t%s\n' "$target" "$backup_destination" "$staging" >"$journal"
   mkdir -p "$staging"
+  chmod "$source_mode" "$staging"
   if [ "$target_relative" != '.local/bin' ]; then
     if ! cp -a "$resolved_source"/. "$staging"/; then
       rm -r -- "$staging"
+      rm -f -- "$journal"
       printf 'dotfiles: failed to copy directory link %s; original link is unchanged\n' "$target" >&2
       exit 1
     fi
   fi
-  mkdir -p "$backup_root/directories/$(dirname "$target_relative")"
-  mv "$target" "$backup_root/directories/$target_relative"
+  mv "$target" "$backup_destination"
   mv "$staging" "$target"
+  rm -f -- "$journal"
   printf 'dotfiles: migrated directory link %s (source %s)\n' "$target" "$resolved_source"
 }
 

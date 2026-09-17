@@ -475,7 +475,7 @@ in
       lib.concatMapStrings (
         root:
         "      printf '%s\\0%s\\0' ${lib.escapeShellArg root.target} ${lib.escapeShellArg "${dotfiles}/home/${root.source}"}\n"
-      ) (directoryRoots ++ migrationDirectoryRoots)
+      ) (migrationDirectoryRoots ++ directoryRoots)
     }    } > "$directories"
         ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-managed-paths" \
           --manifest0 "$manifest" \

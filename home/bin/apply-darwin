@@ -55,7 +55,7 @@ load_nix_profile() {
 
 warn_homebrew_inventory() {
   if ! command -v brew >/dev/null 2>&1; then
-    printf '%s\n' 'dotfiles: Homebrew is not installed yet; declared inventory will be applied by nix-darwin.' >&2
+    printf '%s\n' 'dotfiles: exact Homebrew inventory before zap: formulae: none; casks: none; taps: none; nothing will be removed.' >&2
     return 0
   fi
   if ! command -v nix >/dev/null 2>&1; then
