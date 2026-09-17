@@ -422,12 +422,17 @@ preserve_cursor_leftover() {
 
 ensure_apple_container() {
   printf '%s\n' '==> Step 13: Apple Container official installer'
-  if command -v container >/dev/null 2>&1; then
-    printf '%s\n' '    Apple Container CLI is already installed'
+  local container_bin=/usr/local/bin/container
+  if [ -x "$container_bin" ]; then
+    printf '    Apple Container CLI is already installed at %s\n' "$container_bin"
+  elif command -v container >/dev/null 2>&1; then
+    printf 'bootstrap: refusing Container executable outside Apple installer path %s: %s\n' \
+      "$container_bin" "$(command -v container)" >&2
+    return 1
   else
     check_command curl
     check_command jq
-    local release_json pkg_url pkg
+    local release_json pkg_url pkg signature
     release_json="${TMPDIR:-/tmp}/bootstrap-container-release.$$.json"
     pkg="${TMPDIR:-/tmp}/container-$$.pkg"
     curl --proto '=https' --tlsv1.2 -fsSL \
@@ -439,17 +444,34 @@ ensure_apple_container() {
     esac
     curl --proto '=https' --tlsv1.2 -fL "$pkg_url" -o "$pkg"
     check_command pkgutil
-    pkgutil --check-signature "$pkg"
+    if ! signature=$(pkgutil --check-signature "$pkg" 2>&1); then
+      printf '%s\n' "$signature" >&2
+      rm -f "$release_json" "$pkg"
+      printf '%s\n' 'bootstrap: Apple Container package signature validation failed' >&2
+      return 1
+    fi
+    case "$signature" in
+      *'Developer ID Installer: Apple '*) ;;
+      *)
+        printf '%s\n' "$signature" >&2
+        rm -f "$release_json" "$pkg"
+        printf '%s\n' 'bootstrap: Apple Container package is not signed by Apple' >&2
+        return 1
+        ;;
+    esac
     printf '%s\n' '    installing Apple Container signed package (administrator approval may be requested)'
     sudo installer -pkg "$pkg" -target /
     rm -f "$release_json" "$pkg"
   fi
-  check_command container
-  if ! container system status >/dev/null 2>&1; then
-    printf '%s\n' '    Apple Container services are not registered/running; starting via container system start' >&2
-    container system start --enable-kernel-install --timeout 60
+  if [ ! -x "$container_bin" ]; then
+    printf 'bootstrap: Apple Container installer did not provide %s\n' "$container_bin" >&2
+    return 1
   fi
-  container system status >/dev/null 2>&1 || {
+  if ! "$container_bin" system status >/dev/null 2>&1; then
+    printf '%s\n' '    Apple Container services are not registered/running; starting via container system start' >&2
+    "$container_bin" system start --enable-kernel-install --timeout 60
+  fi
+  "$container_bin" system status >/dev/null 2>&1 || {
     printf '%s\n' 'bootstrap: Apple Container services could not be registered and started; rerun container system start after addressing the Apple service prompt' >&2
     return 1
   }

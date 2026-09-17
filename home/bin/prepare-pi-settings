@@ -88,6 +88,13 @@ trap cleanup EXIT
     elif type == "object" then (.source // null)
     else null
     end;
+  def mergeDeep(left; right):
+    if (left | type) == "object" and (right | type) == "object" then
+      reduce (right | keys_unsorted[]) as $key
+        (left;
+         .[$key] = if has($key) then mergeDeep(.[$key]; right[$key]) else right[$key] end)
+    else right
+    end;
   def dedupePackages:
     reduce (.packages // [])[] as $package
       ({out: [], slots: {}};
@@ -98,7 +105,7 @@ trap cleanup EXIT
          if ($package | type) == "object" then
            (.slots[$source]) as $slot |
            if (.out[$slot] | type) == "object" then
-             .out[$slot] = (.out[$slot] * $package)
+             .out[$slot] = mergeDeep(.out[$slot]; $package)
            else
              .out[$slot] = $package
            end
