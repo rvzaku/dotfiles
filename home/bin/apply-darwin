@@ -155,6 +155,7 @@ WARNING
 
 ROOT=$(resolve_root) || exit 1
 DOTFILES_USER="${DOTFILES_USER:-$(id -un)}"
+DOTFILES_HOME="${DOTFILES_HOME:-$HOME}"
 DOTFILES_HOST="${DOTFILES_HOST:-$(resolve_host)}"
 machine_marker="${DOTFILES_MACHINE_MARKER:-$HOME/.config/dotfiles/machine-role}"
 if [ -z "${DOTFILES_MACHINE_ROLE:-}" ] && [ -f "$machine_marker" ]; then
@@ -256,12 +257,12 @@ if [ "$mode" = --bootstrap ] || ! command -v darwin-rebuild >/dev/null 2>&1; the
   # nix-darwin's system switch is root-owned. Let sudo establish root's HOME
   # while retaining the derived user's identity variables for Home Manager;
   # sudo prompts here rather than running a privileged activation silently.
-  sudo -H env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOST=$DOTFILES_HOST" \
+  sudo -H env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOME=$DOTFILES_HOME" "DOTFILES_HOST=$DOTFILES_HOST" \
     "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" "$NIX_BIN" run \
     github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
     switch --impure --flake "$ROOT#$DOTFILES_HOST"
 else
-  sudo -H env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOST=$DOTFILES_HOST" \
+  sudo -H env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOME=$DOTFILES_HOME" "DOTFILES_HOST=$DOTFILES_HOST" \
     "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" darwin-rebuild \
     switch --impure --flake "$ROOT#$DOTFILES_HOST"
 fi

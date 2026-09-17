@@ -59,6 +59,11 @@ before it reaches the real OAuth gate. Existing `~/dotfiles` is never replaced
 when resuming a valid checkout. Read the zap, credential, and privacy prompts
 as they appear; rerun the same command after an interruption.
 
+Sudo is configured declaratively for Touch ID through
+`security.pam.services.sudo_local.touchIdAuth` and `reattach`, including
+Herdr/terminal multiplexer sessions. Password fallback remains available when
+Touch ID cannot be used.
+
 `bootstrap.sh` performs the complete ordered setup: Apple Command Line Tools;
 Determinate Nix and locked-flake validation; the first darwin-rebuild (including
 Automic Vault, SSH tooling, and declared apps); AV verification; GitHub browser/

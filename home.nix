@@ -3,13 +3,12 @@
   lib,
   pkgs,
   user,
+  homeDirectory,
   dotfilesRoot ? "",
   ...
 }:
 
 let
-  runtimeHome = builtins.getEnv "HOME";
-  homeDirectory = if runtimeHome != "" then runtimeHome else "/Users/${user}";
   backpassConfig =
     let source = builtins.fromJSON (builtins.readFile ./home/.config/backpass/config.json);
     in pkgs.writeText "backpass-config.json" (builtins.toJSON (source // {

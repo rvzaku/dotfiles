@@ -23,6 +23,8 @@
       user = if envUser != "" then envUser else "nobody";
       envHost = builtins.getEnv "DOTFILES_HOST";
       host = if envHost != "" then envHost else "mac";
+      envHome = builtins.getEnv "DOTFILES_HOME";
+      homeDirectory = if envHome != "" then envHome else "/Users/${user}";
       dotfilesRoot =
         let fromEnvironment = builtins.getEnv "DOTFILES_ROOT";
         in if fromEnvironment != "" then fromEnvironment else "/Users/${user}/dotfiles";
@@ -33,7 +35,7 @@
           inherit user;
           # Out-of-store links must point at the checkout, not a Nix store
           # copy. apply-darwin.sh supplies this for arbitrary clone paths.
-          inherit dotfilesRoot;
+          inherit dotfilesRoot homeDirectory;
         };
         modules = [
           ./configuration.nix
@@ -44,7 +46,7 @@
             home-manager.useUserPackages = true;
             home-manager.extraSpecialArgs = {
               inherit user;
-              inherit dotfilesRoot;
+              inherit dotfilesRoot homeDirectory;
             };
             home-manager.users.${user} = import ./home.nix;
           }

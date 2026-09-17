@@ -1,9 +1,4 @@
-{ user, ... }:
-
-let
-  runtimeHome = builtins.getEnv "HOME";
-  homeDirectory = if runtimeHome != "" then runtimeHome else "/Users/${user}";
-in
+{ user, homeDirectory, ... }:
 
 {
   # Determinate already manages the Nix daemon, so nix-darwin shouldn't.
@@ -17,6 +12,10 @@ in
     home = homeDirectory;
   };
   system.stateVersion = 6;
+  # Keep password fallback while allowing Touch ID for sudo, including inside
+  # terminal multiplexers/Herdr sessions via pam_reattach.
+  security.pam.services.sudo_local.touchIdAuth = true;
+  security.pam.services.sudo_local.reattach = true;
   system.defaults = {
     NSGlobalDomain = {
       AppleInterfaceStyle = "Dark";

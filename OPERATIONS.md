@@ -12,6 +12,11 @@ Home Manager migration backups remain in the user's home state directories.
 ./home/bin/dot-doctor
 ```
 
+The Darwin declaration enables `sudo_local.touchIdAuth` and
+`sudo_local.reattach`, so Touch ID works for normal sudo prompts and inside
+Herdr/terminal multiplexer sessions. Password fallback remains enabled; keep
+the fallback available for recovery when Touch ID is unavailable.
+
 `bootstrap.sh` installs Determinate Nix, preserves an existing Firstmate
 checkout, and applies the current checkout. `$HOME/dotfiles` is the normal
 primary location. A clone at another absolute path is supported through the

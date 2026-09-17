@@ -17,10 +17,19 @@ stub_command() {
 # Fresh checkout identity must come from the invoking machine, not flake.nix.
 test_portable_identity_fixture() {
   command -v nix >/dev/null 2>&1 || { printf '%s\n' 'skip: nix unavailable for identity fixture'; return 0; }
-  local identity
+  local identity home_identity pam_options
   identity=$(DOTFILES_USER=fresh-user DOTFILES_HOST=borrowed-mac nix eval --impure --raw \
     "$ROOT#darwinConfigurations.borrowed-mac.config.system.primaryUser")
   [ "$identity" = fresh-user ] || fail "flake retained a hardcoded username: $identity"
+  home_identity=$(HOME=/var/root DOTFILES_USER=fresh-user DOTFILES_HOST=borrowed-mac \
+    DOTFILES_HOME="$fixture_root/fresh-home" nix eval --impure --raw \
+    "path:$ROOT#darwinConfigurations.borrowed-mac.config.home-manager.users.fresh-user.home.homeDirectory")
+  [ "$home_identity" = "$fixture_root/fresh-home" ] || \
+    fail "evaluation did not preserve DOTFILES_HOME: $home_identity"
+  pam_options=$(DOTFILES_USER=fresh-user DOTFILES_HOST=borrowed-mac nix eval --impure --json \
+    "$ROOT#darwinConfigurations.borrowed-mac.config.security.pam.services.sudo_local")
+  assert_contains "$pam_options" '"touchIdAuth":true' 'sudo Touch ID is not declared'
+  assert_contains "$pam_options" '"reattach":true' 'sudo pam_reattach is not declared'
   pass 'portable user/hostname fixture resolves a different machine identity'
 }
 
@@ -79,7 +88,6 @@ test_brew_zap_inventory_fixture() {
   # installed short name. The inventory must not propose removing pi-launcher.
   stub_command nix 'case "$*" in *.brews) printf "herdr\n";; *.casks) printf "kunchenguid/tap/pi-launcher\n";; *.taps) printf "kunchenguid/tap\n";; esac'
   # shellcheck disable=SC2016
-  stub_command darwin-rebuild 'printf "%s|%s\n" "$HOME" "$DOTFILES_USER" > "${DOTFILES_TEST_INVOCATION:-/dev/null}"; exit 0'
   stub_command darwin-rebuild 'printf "%s|%s\n" "$HOME" "$DOTFILES_USER" > "${DOTFILES_TEST_INVOCATION:-/dev/null}"; exit 0'
   # shellcheck disable=SC2016
   stub_command sudo 'printf "%s\n" "$*" > "${DOTFILES_SUDO_INVOCATION:-/dev/null}"; [ "${1:-}" = -H ] || exit 98; shift; [ "${1:-}" = env ] || exit 97; shift; export HOME=/var/root; while [ "$#" -gt 0 ] && [ "${1#*=}" != "$1" ]; do export "$1"; shift; done; exec "$@"'
