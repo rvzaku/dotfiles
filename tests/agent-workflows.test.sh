@@ -22,6 +22,21 @@ SCRIPT
   chmod +x "$FAKE/$name"
 }
 
+make_agent_tools_fixture() {
+  local bin="$TMP_ROOT/update-agent-tools-fixture"
+  mkdir -p "$bin"
+  cp "$ROOT/home/bin/update-agent-tools" "$bin/update-agent-tools"
+  cp "$ROOT/home/bin/verify-av" "$bin/verify-av"
+  cp "$ROOT/home/bin/update-skills" "$bin/update-skills"
+  cp "$ROOT/home/bin/prune-migration-backups" "$bin/prune-migration-backups"
+  cat >"$bin/dot-doctor" <<'SCRIPT'
+#!/usr/bin/env bash
+if [ "${DOT_DOCTOR_FAIL:-0}" = 1 ]; then exit 1; fi
+exit 0
+SCRIPT
+  chmod +x "$bin"/*
+  printf '%s\n' "$bin/update-agent-tools"
+}
 trusted_agent_tool_present() {
   local tool directory
   for tool in no-mistakes treehouse pi-signed; do
@@ -289,7 +304,8 @@ test_skills_and_topgrade_boundaries() {
     pass 'Trusted agent tools present; update command fixture skipped'
     return 0
   fi
-  local log="$TMP_ROOT/updates.log" output
+  local log="$TMP_ROOT/updates.log" output update_script
+  update_script=$(make_agent_tools_fixture)
   : >"$log"
   mkdir -p "$TMP_ROOT/home/.local/bin"
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/home/.local/bin/update-skills"
@@ -335,7 +351,7 @@ SCRIPT
   : >"$log"
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
+    "$update_script") || fail 'full agent update transaction failed'
   [ "$(grep -c '^skills update --global --yes$' "$log")" -eq 1 ] \
     || fail 'global Skills registry update did not run exactly once for agent-stuff'
   assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
@@ -348,7 +364,7 @@ SCRIPT
   set +e
   security_output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PI_SIGNED_BIN=/nonexistent AV_HIGH=1 DOTFILES_BACKUP_BASE="$security_backup" \
-    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+    PATH="$FAKE:/usr/bin:/bin" "$update_script" 2>&1)
   local security_status=$?
   set -e
   [ "$security_status" -ne 0 ] || fail 'HIGH Automic Vault finding did not block full update'
@@ -357,7 +373,7 @@ SCRIPT
   set +e
   security_output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PI_SIGNED_BIN=/nonexistent DOT_DOCTOR_FAIL=1 DOTFILES_BACKUP_BASE="$security_backup" \
-    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+    PATH="$FAKE:/usr/bin:/bin" "$update_script" 2>&1)
   security_status=$?
   set -e
   [ "$security_status" -ne 0 ] || fail 'failing dot-doctor did not block full update'
@@ -365,7 +381,7 @@ SCRIPT
   assert_contains "$security_output" 'retaining migration backups' 'dot-doctor failure did not retain migration backups'
   : >"$log"
   if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/update-agent-tools" --only brew >/dev/null 2>&1; then
+    "$update_script" --only brew >/dev/null 2>&1; then
     fail 'targeted update argument was accepted as a full transaction'
   fi
   [ ! -s "$log" ] || fail 'targeted update unexpectedly ran full-update commands'
@@ -401,7 +417,8 @@ test_npm_prefix_fallback() {
     pass 'Trusted agent tools present; npm prefix fixture skipped'
     return 0
   fi
-  local log="$TMP_ROOT/npm-prefix.log" output
+  local log="$TMP_ROOT/npm-prefix.log" output update_script
+  update_script=$(make_agent_tools_fixture)
   mkdir -p "$TMP_ROOT/npm-home/.local/bin"
   cat >"$FAKE/npm" <<'SCRIPT'
 #!/usr/bin/env bash
@@ -421,7 +438,7 @@ SCRIPT
   output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
     NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/update-agent-tools") \
+    "$update_script") \
     || fail 'Nix npm prefix prevented the full update transaction'
   [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local/npm" ] \
     || fail 'full update retained a read-only Nix npm prefix'
