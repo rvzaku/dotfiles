@@ -78,9 +78,11 @@ test_brew_zap_inventory_fixture() {
   # The declaration is tap-qualified while brew list --cask returns the
   # installed short name. The inventory must not propose removing pi-launcher.
   stub_command nix 'case "$*" in *.brews) printf "herdr\n";; *.casks) printf "kunchenguid/tap/pi-launcher\n";; *.taps) printf "kunchenguid/tap\n";; esac'
+  # shellcheck disable=SC2016
+  stub_command darwin-rebuild 'printf "%s|%s\n" "$HOME" "$DOTFILES_USER" > "${DOTFILES_TEST_INVOCATION:-/dev/null}"; exit 0'
   stub_command darwin-rebuild 'printf "%s|%s\n" "$HOME" "$DOTFILES_USER" > "${DOTFILES_TEST_INVOCATION:-/dev/null}"; exit 0'
   # shellcheck disable=SC2016
-  stub_command sudo 'printf "%s\n" "unexpected privileged activation" >&2; exit 99'
+  stub_command sudo 'printf "%s\n" "$*" > "${DOTFILES_SUDO_INVOCATION:-/dev/null}"; [ "${1:-}" = -H ] || exit 98; shift; [ "${1:-}" = env ] || exit 97; shift; export HOME=/var/root; while [ "$#" -gt 0 ] && [ "${1#*=}" != "$1" ]; do export "$1"; shift; done; exec "$@"'
   local output status cask_removals
   mkdir -p "$fixture_root/home/.config/dotfiles"
   printf '%s\n' other >"$fixture_root/home/.config/dotfiles/machine-role"
@@ -93,7 +95,8 @@ test_brew_zap_inventory_fixture() {
   assert_contains "$output" 'protective machine has no owner confirmation' 'protective zap stop was not reported'
   output=$(PATH="$fixture_root/bin:/usr/bin:/bin" DOTFILES_ROOT="$ROOT" \
     DOTFILES_ASSUME_HOMEBREW_ZAP=1 DOTFILES_USER=fixture-user \
-    DOTFILES_TEST_INVOCATION="$fixture_root/darwin-rebuild.invocation" HOME="$fixture_root/home" \
+    DOTFILES_TEST_INVOCATION="$fixture_root/darwin-rebuild.invocation" \
+    DOTFILES_SUDO_INVOCATION="$fixture_root/sudo.invocation" HOME="$fixture_root/home" \
     "$ROOT/home/bin/apply-darwin" 2>&1)
   assert_contains "$output" 'undeclared-formula' 'zap warning omitted formula inventory'
   assert_contains "$output" 'undeclared-cask' 'zap warning omitted cask inventory'
@@ -102,8 +105,10 @@ test_brew_zap_inventory_fixture() {
   case " $cask_removals " in
     *' pi-launcher '*) fail 'tap-qualified cask was incorrectly marked for removal' ;;
   esac
-  assert_file_contains "$fixture_root/darwin-rebuild.invocation" \
-    "$fixture_root/home|fixture-user" 'activation did not retain the invoking user HOME contract'
+  assert_contains "$(cat "$fixture_root/darwin-rebuild.invocation")" \
+    '/var/root|fixture-user' 'activation did not use root HOME with the derived user contract'
+  assert_contains "$(cat "$fixture_root/sudo.invocation")" '-H env' \
+    'activation did not use the explicit sudo root boundary'
   pass 'Brew zap inventory fixture warns before a stubbed switch'
   printf '%s\n' own >"$fixture_root/home/.config/dotfiles/machine-role"
   PATH="$fixture_root/bin:/usr/bin:/bin" DOTFILES_ROOT="$ROOT" HOME="$fixture_root/home" \

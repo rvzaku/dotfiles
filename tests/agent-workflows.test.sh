@@ -304,6 +304,16 @@ exit 42
 SCRIPT
   cat >"$FAKE/sudo" <<'SCRIPT'
 #!/usr/bin/env bash
+set -e
+[ "${1:-}" = -H ] || exit 98
+shift
+[ "${1:-}" = env ] || exit 97
+shift
+export HOME=/var/root
+while [ "$#" -gt 0 ] && [ "${1#*=}" != "$1" ]; do
+  export "$1"
+  shift
+done
 exec "$@"
 SCRIPT
   chmod +x "$FAKE/nix" "$FAKE/sudo"
