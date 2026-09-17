@@ -41,8 +41,8 @@ in
       "kunchenguid/tap"
     ];
     onActivation.cleanup = "zap"; # remove anything not listed here
-    # Topgrade owns latest-version updates; switches remain reproducible.
-    onActivation.autoUpdate = false;
+    # Homebrew follows its declared auto-update policy; zap remains explicit.
+    onActivation.autoUpdate = true;
     onActivation.extraFlags = [ "--force" ];
     brews = [
       "herdr"

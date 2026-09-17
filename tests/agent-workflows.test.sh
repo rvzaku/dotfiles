@@ -40,6 +40,8 @@ test_public_commands() {
     ') || fail "could not evaluate public command links"
   actual=$(printf '%s' "$actual" | jq -c 'sort')
   expected=$(printf '%s\n' \
+    '.local/bin/rebuild' \
+    '.local/bin/topgrade-raw' \
     '.local/bin/agent-claude-yolo' \
     '.local/bin/agent-codex-yolo' \
     '.local/bin/agent-grok-yolo' \
@@ -118,13 +120,15 @@ test_skills_and_topgrade_boundaries() {
   for command in npm no-mistakes treehouse skills update-firstmate; do
     fake_command "$command"
   done
+  HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-skills" --seed >/dev/null || fail 'Skills source seeding failed'
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
   assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --all --yes' 'Vision Skills source was not seeded'
   assert_file_contains "$log" 'skills add https://github.com/mitsuhiko/agent-stuff --global --all --yes' 'agent-stuff Skills source was not seeded'
   assert_file_contains "$log" 'skills update --global --yes' 'global Skills registry was not updated'
   assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
-  assert_contains "$output" 'retaining migration snapshots' 'update did not retain backups without a proven full transaction'
+  assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
   assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
   : >"$log"
   if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
@@ -151,7 +155,7 @@ SCRIPT
     NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
     PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") \
     || fail 'Nix npm prefix prevented the full update transaction'
-  [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local" ] \
+  [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local/npm" ] \
     || fail 'full update retained a read-only Nix npm prefix'
   assert_contains "$output" 'complete update transaction finished' \
     'Nix npm prefix fallback did not complete the transaction'
@@ -178,6 +182,24 @@ test_firstmate_relations() {
   FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
     >"$TMP_ROOT/firstmate-behind.out" || fail 'behind Firstmate update failed'
   [ "$(cat "$fm/file")" = two ] || fail 'behind checkout did not fast-forward'
+  [ "$(cat "$fm/file")" = two ] || fail 'behind checkout did not fast-forward'
+  [ "$(cat "$fm/config/backend")" = herdr ] || fail 'Firstmate backend was not materialized'
+  [ "$(cat "$fm/config/backlog-backend")" = tasks-axi ] || fail 'Firstmate backlog backend was not materialized'
+  [ -f "$fm/config/crew-harness" ] || fail 'Firstmate crew harness was not materialized'
+  cmp -s "$ROOT/home/.config/firstmate/crew-dispatch.json" "$fm/config/crew-dispatch.json" \
+    || fail 'Firstmate crew dispatch was not materialized exactly'
+  mv "$fm/config/backend" "$fm/config/backend.value"
+  mkdir "$fm/config/backend"
+  before_dispatch=$(shasum -a 256 "$fm/config/crew-dispatch.json" | awk '{print $1}')
+  set +e
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" --materialize-config >/dev/null 2>&1
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'Firstmate config directory collision was not rejected'
+  rmdir "$fm/config/backend"
+  mv "$fm/config/backend.value" "$fm/config/backend"
+  [ "$(shasum -a 256 "$fm/config/crew-dispatch.json" | awk '{print $1}')" = "$before_dispatch" ] \
+    || fail 'failed Firstmate config materialization changed an earlier leaf'
 
   printf local >"$fm/local"
   git -C "$fm" add local

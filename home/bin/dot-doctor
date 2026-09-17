@@ -105,8 +105,14 @@ fi
 firstmate_home="${FIRSTMATE_HOME:-$HOME/firstmate}"
 firstmate_config="$firstmate_home/config"
 if [ -e "$firstmate_home/.git" ]; then
-  expected_harness='pi'
-  if find_pi_signed >/dev/null 2>&1; then expected_harness='pi-signed'; fi
+  expected_harness=''
+  if find_pi_signed >/dev/null 2>&1; then
+    expected_harness='pi-signed'
+  elif find_pi_plain >/dev/null 2>&1; then
+    expected_harness='pi'
+  else
+    degraded_check 'pi-signed and pi are unavailable; crew-harness resolution is unproven'
+  fi
   check_firstmate_leaf() {
     local name=$1 expected=$2 actual
     if [ ! -f "$firstmate_config/$name" ] || [ -L "$firstmate_config/$name" ]; then
@@ -121,9 +127,13 @@ if [ -e "$firstmate_home/.git" ]; then
     fi
   }
   check_firstmate_leaf backend herdr
-  check_firstmate_leaf crew-harness "$expected_harness"
+  if [ -n "$expected_harness" ]; then
+    check_firstmate_leaf crew-harness "$expected_harness"
+  fi
   check_firstmate_leaf backlog-backend tasks-axi
-  if [ -f "$firstmate_config/crew-dispatch.json" ] && [ ! -L "$firstmate_config/crew-dispatch.json" ] && cmp -s "$ROOT/home/.config/firstmate/crew-dispatch.json" "$firstmate_config/crew-dispatch.json"; then
+  if [ -f "$firstmate_config/crew-dispatch.json" ] && [ ! -L "$firstmate_config/crew-dispatch.json" ] \
+    && command -v jq >/dev/null 2>&1 && jq empty "$firstmate_config/crew-dispatch.json" >/dev/null 2>&1 \
+    && cmp -s "$ROOT/home/.config/firstmate/crew-dispatch.json" "$firstmate_config/crew-dispatch.json"; then
     pass_check 'Firstmate crew-dispatch.json matches authored configuration'
   else
     fail_check 'Firstmate crew-dispatch.json is missing or differs from authored configuration'
@@ -132,14 +142,21 @@ else
   fail_check "Firstmate checkout is missing at $firstmate_home"
 fi
 
+if [ -e "$firstmate_home/.git" ]; then
+  firstmate_origin=$(git -C "$firstmate_home" remote get-url origin 2>/dev/null || true)
+  case "$firstmate_origin" in
+    https://github.com/kunchenguid/firstmate.git|https://github.com/kunchenguid/firstmate|git@github.com:kunchenguid/firstmate.git) pass_check 'Firstmate origin is Kun upstream' ;;
+    '') degraded_check 'Firstmate origin is not configured' ;;
+    *) fail_check "Firstmate origin is not Kun upstream: $firstmate_origin" ;;
+  esac
+fi
+
 if command -v skills >/dev/null 2>&1; then
   skills_json=$(mktemp "${TMPDIR:-/tmp}/dotfiles-skills.XXXXXX")
   if skills list -g --json >"$skills_json" 2>/dev/null && command -v jq >/dev/null 2>&1; then
     local_skill_names=$(jq -r '.[]? | select(.name != "backpass" and (.source == null or .sourceType == "local")) | .name' "$skills_json" 2>/dev/null || printf '__parse_error__')
     if [ "$local_skill_names" = '__parse_error__' ]; then
       fail_check 'global Skills registry output could not be parsed'
-    elif [ -n "$local_skill_names" ]; then
-      fail_check "global Skills registry has local/unidentified sources: $(printf '%s' "$local_skill_names" | tr '\n' ' ')"
     elif [ -n "$local_skill_names" ]; then
       fail_check "global Skills registry has local/unidentified sources: $(printf '%s' "$local_skill_names" | tr '\n' ' ')"
     else
@@ -193,6 +210,18 @@ if command -v av >/dev/null 2>&1; then
   if ! command -v jq >/dev/null 2>&1; then
     fail_check 'Automic Vault is available but jq is missing, so AV findings cannot be evaluated'
   else
+    av_doctor=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-doctor.XXXXXX")
+    if av doctor --json >"$av_doctor" 2>/dev/null; then
+      av_doctor_issues=$(jq '[.results[]?.issues[]?] | length' "$av_doctor" 2>/dev/null || printf parse-error)
+      case "$av_doctor_issues" in
+        0) pass_check 'Automic Vault doctor reports no unresolved hardening issues' ;;
+        ''|*[!0-9]*) fail_check 'Automic Vault doctor output could not be parsed' ;;
+        *) fail_check "Automic Vault doctor reports $av_doctor_issues unresolved issue(s)" ;;
+      esac
+    else
+      fail_check 'Automic Vault doctor failed; hardening status is unproven'
+    fi
+    rm -f "$av_doctor"
     av_scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX")
     if av scan --json >"$av_scan" 2>/dev/null; then
       av_blocking=$(jq '[.findings[]? | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
@@ -209,14 +238,79 @@ if command -v av >/dev/null 2>&1; then
 else
   degraded_check 'Automic Vault CLI is unavailable; managed security status is unproven'
 fi
-
-for tool in herdr topgrade treehouse no-mistakes skills container ssh; do
+for tool in darwin-rebuild brew herdr topgrade treehouse no-mistakes gh gh-axi \
+  chrome-devtools-axi lavish-axi tasks-axi quota-axi backpass acpx skills \
+  container ssh claude codex; do
   if command -v "$tool" >/dev/null 2>&1; then
     pass_check "$tool is available"
   else
     degraded_check "$tool is unavailable"
   fi
 done
+
+if command -v gh >/dev/null 2>&1; then
+  if env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GH_HOST gh auth status --hostname github.com >/dev/null 2>&1; then
+    pass_check 'GitHub OAuth credential is available through gh'
+  else
+    degraded_check 'GitHub OAuth is not authenticated; bootstrap must complete browser/device sign-in'
+  fi
+else
+  degraded_check 'gh is unavailable; GitHub authentication is unproven'
+fi
+
+if [ -f "$HOME/.ssh/id_ed25519" ] && [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
+  pass_check 'Ed25519 SSH identity files are present'
+else
+  degraded_check 'Ed25519 SSH identity is unavailable; bootstrap must create it interactively'
+fi
+
+git_origin=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
+case "$git_origin" in
+  https://github.com/rvzaku/dotfiles.git|git@github.com:rvzaku/dotfiles.git) pass_check 'dotfiles origin is rvzaku/dotfiles' ;;
+  '') degraded_check 'dotfiles origin is not configured' ;;
+  *) degraded_check "dotfiles origin is unexpected: $git_origin" ;;
+esac
+if git -C "$ROOT" remote get-url upstream >/dev/null 2>&1; then
+  pass_check 'Kun dotfiles upstream remote is configured'
+else
+  degraded_check 'Kun dotfiles upstream remote is not configured'
+fi
+
+if command -v npm >/dev/null 2>&1; then
+  npm_prefix=$(NPM_CONFIG_USERCONFIG=/dev/null npm config get prefix 2>/dev/null || true)
+  case "$npm_prefix" in
+    /nix/store/*) fail_check "npm global prefix points into read-only Nix store: $npm_prefix" ;;
+    "$HOME/.local/npm") pass_check 'npm global prefix is user-owned at ~/.local/npm' ;;
+    '') degraded_check 'npm global prefix could not be determined' ;;
+    *) degraded_check "npm global prefix is outside the declared ~/.local/npm path: $npm_prefix" ;;
+  esac
+else
+  degraded_check 'npm is unavailable; global prefix is unproven'
+fi
+
+if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -e "$HOME/.cursor" ]; then
+  fail_check 'Cursor tooling is present but explicitly forbidden by this workspace'
+else
+  pass_check 'Cursor tooling is absent'
+fi
+
+if command -v nix >/dev/null 2>&1; then
+  if nix flake check --no-build --no-write-lock-file "$ROOT" >/dev/null 2>&1; then
+    pass_check 'flake evaluates without writing flake.lock'
+  else
+    fail_check 'flake evaluation failed'
+  fi
+else
+  degraded_check 'flake evaluation is unproven because nix is unavailable'
+fi
+
+if command -v container >/dev/null 2>&1; then
+  if container system status >/dev/null 2>&1; then
+    pass_check 'Apple Container system is running'
+  else
+    fail_check 'Apple Container CLI is installed but its system service is not running'
+  fi
+fi
 
 if [ "$problems" -gt 0 ]; then
   printf 'dot-doctor: FAIL - %s blocking issue(s), %s degraded check(s)\n' "$problems" "$degraded" >&2

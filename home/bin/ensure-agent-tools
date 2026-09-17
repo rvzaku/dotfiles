@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -u
-npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local}"
+npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local/npm}"
 case "$npm_prefix" in
   \$HOME/*) npm_prefix="$HOME/${npm_prefix#\$HOME/}" ;;
 esac
 case "$npm_prefix" in
   /nix/store/*)
     printf 'agent tools: ignoring read-only Nix npm prefix %s\n' "$npm_prefix" >&2
-    npm_prefix="$HOME/.local"
+    npm_prefix="$HOME/.local/npm"
     ;;
 esac
 export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"

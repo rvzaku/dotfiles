@@ -39,6 +39,27 @@ resolve_dotfiles_root() {
   return 1
 }
 dotfiles_root=$(resolve_dotfiles_root 2>/dev/null || true)
+dotfiles_root=$(resolve_dotfiles_root 2>/dev/null || true)
+fetch_kun_dotfiles() {
+  [ "${DOTFILES_FULL_UPDATE:-}" = 1 ] || return 0
+  if [ -z "$dotfiles_root" ]; then
+    printf '%s\n' 'dotfiles: cannot resolve checkout root for Kun upstream fetch' >&2
+    return 1
+  fi
+  local branch fetch_refspec
+  branch=$(git -C "$dotfiles_root" symbolic-ref --quiet --short HEAD || true)
+  if [ -n "$branch" ]; then
+    fetch_refspec="+refs/heads/$branch:refs/remotes/dotfiles-kun/$branch"
+  else
+    fetch_refspec='+refs/heads/*:refs/remotes/dotfiles-kun/*'
+  fi
+  if git -C "$dotfiles_root" fetch --prune https://github.com/kunchenguid/dotfiles.git "$fetch_refspec"; then
+    printf '%s\n' 'dotfiles: fetched Kun upstream without merging or rewriting local work'
+    return 0
+  fi
+  printf '%s\n' 'dotfiles: Kun upstream fetch failed; preserving local work' >&2
+  return 1
+}
 
 if [ "$#" -gt 0 ]; then
   case "$1" in
@@ -54,18 +75,21 @@ if [ "$#" -gt 0 ]; then
   esac
 fi
 
-npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local}"
+npm_prefix="${NPM_CONFIG_PREFIX:-$HOME/.local/npm}"
 case "$npm_prefix" in
   \$HOME/*) npm_prefix="$HOME/${npm_prefix#\$HOME/}" ;;
 esac
 case "$npm_prefix" in
   /nix/store/*)
     printf 'agent tools: ignoring read-only Nix npm prefix %s\n' "$npm_prefix" >&2
-    npm_prefix="$HOME/.local"
+    npm_prefix="$HOME/.local/npm"
     ;;
 esac
 export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
 failures=()
+if ! fetch_kun_dotfiles; then
+  failures+=(dotfiles-upstream)
+fi
 
 if command -v npm >/dev/null 2>&1; then
   if ! NPM_CONFIG_PREFIX="$npm_prefix" npm install --global --no-fund --no-audit \
@@ -99,11 +123,11 @@ else
 fi
 
 if [ -x "$script_dir/update-skills" ]; then
-  if ! "$script_dir/update-skills" --seed; then
+  if ! "$script_dir/update-skills"; then
     failures+=(skills)
   fi
 elif command -v update-skills >/dev/null 2>&1; then
-  if ! update-skills --seed; then
+  if ! update-skills; then
     failures+=(skills)
   fi
 else
@@ -127,17 +151,13 @@ else
 fi
 
 if ((${#failures[@]} == 0)); then
-  if [ "${DOTFILES_FULL_TRANSACTION_SUCCESS:-}" = 1 ]; then
-    if [ -x "$script_dir/prune-migration-backups" ]; then
-      if ! "$script_dir/prune-migration-backups"; then failures+=(backup-prune); fi
-    elif command -v prune-migration-backups >/dev/null 2>&1; then
-      if ! prune-migration-backups; then failures+=(backup-prune); fi
-    else
-      printf '%s\n' 'backups: pruning helper unavailable; old migration backups retained' >&2
-      failures+=(backup-prune)
-    fi
+  if [ -x "$script_dir/prune-migration-backups" ]; then
+    if ! "$script_dir/prune-migration-backups"; then failures+=(backup-prune); fi
+  elif command -v prune-migration-backups >/dev/null 2>&1; then
+    if ! prune-migration-backups; then failures+=(backup-prune); fi
   else
-    printf '%s\n' 'backups: retaining migration snapshots; full-transaction success was not proven'
+    printf '%s\n' 'backups: pruning helper unavailable; old migration backups retained' >&2
+    failures+=(backup-prune)
   fi
 else
   printf 'agent tools: retaining migration backups because transaction had failures: %s\n' "${failures[*]}" >&2

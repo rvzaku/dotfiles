@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+raw_topgrade=$(type -P topgrade || true)
+if [ -z "$raw_topgrade" ]; then
+  printf '%s\n' 'topgrade-raw: topgrade is unavailable' >&2
+  exit 127
+fi
+exec "$raw_topgrade" "$@"

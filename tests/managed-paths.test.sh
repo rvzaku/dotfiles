@@ -130,4 +130,12 @@ nix-instantiate --parse "$ROOT/home.nix" >/dev/null \
   || fail "home.nix does not parse"
 bash -n "$ROOT/home/bin/prepare-managed-paths" \
   || fail "prepare-managed-paths has invalid shell syntax"
-pass "managed paths preserve local resources, settings hooks, and backups"
+backup_retention="$TEST_HOME/.local/state/dotfiles/backups/home-manager"
+mkdir -p "$backup_retention/old" "$backup_retention/new"
+touch -t 202001010000 "$backup_retention/old"
+DOTFILES_BACKUP_BASE="$backup_retention" DOTFILES_BACKUP_RETENTION_DAYS=15 \
+  "$ROOT/home/bin/prune-migration-backups" >/dev/null \
+  || fail "backup pruning command failed"
+[ ! -e "$backup_retention/old" ] || fail "15-day backup retention kept an old snapshot"
+[ -d "$backup_retention/new" ] || fail "backup pruning removed a fresh snapshot"
+pass "managed paths preserve local resources, settings hooks, backups, and retention"

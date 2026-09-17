@@ -128,6 +128,8 @@ let
   ];
 
   publicBinCommands = [
+    "rebuild"
+    "topgrade-raw"
     "agent-claude-yolo"
     "agent-codex-yolo"
     "agent-grok-yolo"
@@ -280,8 +282,6 @@ in
     sqlite
     postgresql
     redis
-    # Security and the native macOS container workflow are explicit owners.
-    container
 
     # editor/LSP servers for the declared languages and configuration formats
     bash-language-server
@@ -324,17 +324,17 @@ in
   fonts.fontconfig.enable = true;
   home.sessionPath = [
     "$HOME/.local/bin"
+    "$HOME/.local/npm/bin"
     "$HOME/firstmate/bin"
     "$HOME/.local/share/pnpm/bin"
     # pnpm's global bin directory must be on PATH for Topgrade's package
     # manager stage; keep it under the writable per-user Home Manager area.
-    # npm's declared prefix is ~/.local; do not put an unmanaged npm prefix
-    # ahead of it.
+    # npm's declared prefix is ~/.local/npm; never write to the Nix store.
   ];
   home.sessionVariables = {
     EDITOR = "nvim";
     VISUAL = "nvim";
-    NPM_CONFIG_PREFIX = "$HOME/.local";
+    NPM_CONFIG_PREFIX = "$HOME/.local/npm";
     PNPM_HOME = "$HOME/.local/share/pnpm";
   };
 
@@ -342,7 +342,7 @@ in
   # declarative activation. Topgrade owns later latest-version updates.
   home.activation.agentNpmTools = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     if command -v npm >/dev/null 2>&1; then
-      if ! NPM_CONFIG_PREFIX="$HOME/.local" npm install --global --no-fund --no-audit \
+      if ! NPM_CONFIG_PREFIX="$HOME/.local/npm" npm install --global --no-fund --no-audit \
         acpx@0.15.1 \
         gh-axi@0.1.35 \
         chrome-devtools-axi@0.1.34 \
@@ -382,12 +382,12 @@ in
     enable = true;
     settings = {
       misc = {
-        assume_yes = true;
+        assume_yes = false;
         no_retry = true;
         cleanup = true;
       };
       commands = {
-        "Update pinned agent tools and Firstmate safely" = "update-agent-tools";
+        "Update pinned agent tools and Firstmate safely" = "DOTFILES_FULL_UPDATE=1 update-agent-tools";
       };
     };
   };

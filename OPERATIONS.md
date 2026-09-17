@@ -34,11 +34,10 @@ It never uses Home Manager's force escape hatch.
 ## Updates
 
 No-argument `topgrade` is the complete update transaction: Topgrade's normal
-Nix/Homebrew/system stages run, followed by `update-agent-tools`, which updates
-mutable npm tools, no-mistakes, Treehouse, all globally registered Skills, and
-Firstmate. The helper retains migration snapshots unless the operator sets
-`DOTFILES_FULL_TRANSACTION_SUCCESS=1` after independently confirming that the
-entire transaction succeeded; only then can its prune step run. `topgrade
+Nix/Homebrew/system stages run, followed by `update-agent-tools`, which fetches
+Kun dotfiles without merging, updates mutable npm tools, no-mistakes, Treehouse,
+all globally registered Skills, and Firstmate. Migration backups are pruned only after every stage owned by that
+complete transaction succeeds; failures retain all snapshots. `topgrade
 --only <target>` remains targeted and does not become a full transaction.
 
 Firstmate is fetched directly from `https://github.com/kunchenguid/firstmate.git`
@@ -58,6 +57,13 @@ Bootstrap and rebuild materialize Firstmate's `config/backend`,
 `config/crew-dispatch.json` atomically and idempotently. Existing differing
 files are moved to the Firstmate state backup directory before replacement;
 runtime config remains outside Git.
+runtime config remains outside Git.
+
+Apple Container is installed only by bootstrap's official signed release path:
+the latest `.pkg` is fetched from `apple/container`, signature-checked with
+`pkgutil`, installed under `/usr/local` with administrator approval, and started
+with `container system start`. It is not substituted with a Nix or Homebrew
+package. Container service state and images remain private runtime data.
 
 ## Validation and recovery
 

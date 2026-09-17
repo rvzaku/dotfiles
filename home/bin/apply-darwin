@@ -39,6 +39,18 @@ load_nix_profile() {
   fi
 }
 
+warn_homebrew_inventory() {
+  if ! command -v brew >/dev/null 2>&1; then
+    printf '%s\n' 'dotfiles: Homebrew is not installed yet; declared inventory will be applied by nix-darwin.' >&2
+    return 0
+  fi
+  printf '%s\n' 'dotfiles: current Homebrew inventory (undeclared items may be removed by zap):' >&2
+  printf '  formulae: %s\n' "$(brew list --formula 2>/dev/null | tr '\n' ' ')" >&2
+  printf '  casks: %s\n' "$(brew list --cask 2>/dev/null | tr '\n' ' ')" >&2
+  printf '  taps: %s\n' "$(brew tap 2>/dev/null | tr '\n' ' ')" >&2
+}
+
+
 warn_homebrew_cleanup() {
   cat >&2 <<'WARNING'
 dotfiles: WARNING - nix-darwin declares Homebrew cleanup=zap.
@@ -86,6 +98,7 @@ case "$mode" in
   *) printf 'usage: %s [--bootstrap]\n' "$0" >&2; exit 2 ;;
 esac
 
+warn_homebrew_inventory || exit 1
 warn_homebrew_cleanup || exit 1
 
 lock_backup=''

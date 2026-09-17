@@ -4,7 +4,7 @@
 set -u
 
 backup_base="${DOTFILES_BACKUP_BASE:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/home-manager}"
-retention_days="${DOTFILES_BACKUP_RETENTION_DAYS:-30}"
+retention_days="${DOTFILES_BACKUP_RETENTION_DAYS:-15}"
 case "$retention_days" in
   ''|*[!0-9]*)
     printf 'backups: invalid retention period %s; refusing to prune\n' "$retention_days" >&2

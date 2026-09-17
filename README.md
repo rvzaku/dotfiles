@@ -32,6 +32,7 @@ Running the switch builds:
 - Agent configs (Claude, Codex, OpenCode, and Pi all share one AGENTS.md)
 - Global agent tools and skills (Firstmate, no-mistakes, treehouse, AXI tools, Backpass, Matt Pocock, Impeccable, and Remote Pi)
 - Declarative yolo launch posture with independent validation and escalation boundaries
+- Apple Container CLI installed from Apple's signed release package (not Nix/Homebrew)
 
 ## Prerequisites
 
@@ -56,17 +57,18 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 ./bootstrap.sh
 ```
 
-`bootstrap.sh` does six things, in order:
-
-1. Installs Determinate Nix, if it isn't already installed.
-2. Uses this checkout as the source of truth. `$HOME/dotfiles` is the normal
-   primary location; a disposable clone at any absolute path also works, and
-   no hidden dotfiles alias is created.
-3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
-4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
-5. Runs the first `darwin-rebuild switch`.
-   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config. Home Manager adopts only the declared leaf files, preserving existing directories and backing up replaced files under `~/.local/state/dotfiles/backups/home-manager/`.
-6. Verifies the pinned global agent npm tools are on `PATH` and installs `no-mistakes` and `treehouse` from their official installers if either is missing.
+`bootstrap.sh` performs the complete ordered setup: Apple Command Line Tools;
+Determinate Nix and locked-flake validation; the first darwin-rebuild (including
+Automic Vault, SSH tooling, and declared apps); AV verification; GitHub browser/
+device OAuth; Ed25519 SSH generation, strict host verification, and public-key
+upload; AV-supported credential hardening and a HIGH/CRITICAL security gate;
+direct Kun Firstmate checkout verification and selected config materialization;
+the Pi-signed/Pi fallback and Herdr/Treehouse/AXI/No Mistakes/Backpass toolchain;
+global Skills registry seeding; Apple's signed Container installer and service;
+and a read-only doctor. OAuth, passphrases, Secret Gates, administrator
+approval, and macOS privacy dialogs remain genuine interactive boundaries.
+Reruns preserve existing Firstmate work, SSH identity, credentials, and runtime
+state; no hidden `.dotfiles` alias is created.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 
@@ -174,20 +176,19 @@ You only run `./rebuild.sh` when you change something that isn't just a symlinke
 ## Global agent foundation
 
 Home Manager installs Pi, the pinned AXI/Backpass/Remote Pi npm tools, and the
-global skill tree. Firstmate remains an agent distribution rather than a CLI;
-`bootstrap.sh` makes the upstream checkout available at `~/firstmate` and adds
-its `bin/` directory to PATH. The global `home/.config/firstmate/crew-dispatch.json`
-is linked into Firstmate's local `config/` directory and uses quota-aware profile
-arrays for image generation, difficult design/architecture/planning, defined bug
-fixes, and the default Pi profile.
+user-owned global npm prefix at `~/.local/npm` (never `/nix/store`). Firstmate
+remains an agent distribution rather than a CLI; `bootstrap.sh` makes the
+upstream checkout available at `~/firstmate` and adds its `bin/` directory to
+PATH. Bootstrap and rebuild materialize the selected Firstmate config leaves
+as private regular files; they never symlink the whole Firstmate config.
 
-Claude, Codex, OpenCode, Grok, and Pi have yolo wrappers for autonomous
-execution. This does not bypass independent tests, no-mistakes, or escalation
-boundaries. Topgrade is the only routine latest-version update path for these
-tools; normal Home Manager activation installs the pinned bootstrap versions.
-Only the documented wrapper, doctor, `ensure-agent-tools`, and update commands are
-linked into `~/.local/bin`; helper scripts such as the Home Manager adoption
-and backup-prune internals stay repo-local.
+Claude, Codex, OpenCode, Grok, and Pi retain adapters for their officially
+supported interfaces. This does not install OpenCode or Grok clients merely
+because an adapter exists, and wrappers do not bypass independent tests,
+no-mistakes, or escalation boundaries. Topgrade is the routine latest-version
+update path; normal Home Manager activation installs pinned bootstrap versions.
+Only documented wrappers, doctor, `ensure-agent-tools`, and update commands are
+linked into `~/.local/bin`; internal adoption and backup helpers stay private.
 
 Backpass user-scope state is private under `~/.config/backpass/user/`; its
 configured writable source is this checkout's `home/AGENTS.md` and
@@ -270,7 +271,7 @@ Neovim keeps italics off and uses a transparent background on macOS, Windows, an
 This is a minimal fork of Kun's current architecture. The intentional delta is
 portable checkout-root injection for arbitrary worktrees, additive collision
 adoption with byte-preserving backups, Pi signed-launcher preference and
-fallback, Automic Vault security checks, explicit container packages, read-only `dot-doctor`, and
+fallback, Automic Vault security checks, Apple's signed Container installer, read-only `dot-doctor`, and
 safe full-update helpers. Existing agent resources remain registry/package-owned
 unless the table above names this checkout as their owner.
 
