@@ -425,10 +425,13 @@ ensure_apple_container() {
   local container_bin=/usr/local/bin/container
   if [ -x "$container_bin" ]; then
     check_command pkgutil
+    local code_signature
     if ! pkgutil --pkg-info com.apple.container-installer >/dev/null 2>&1 \
-      || ! pkgutil --verify com.apple.container-installer >/dev/null 2>&1 \
       || ! pkgutil --file-info "$container_bin" 2>/dev/null \
-        | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }'; then
+        | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }' \
+      || ! code_signature=$(codesign --display --verbose=4 "$container_bin" 2>&1) \
+      || ! codesign --verify --strict "$container_bin" >/dev/null 2>&1 \
+      || ! printf '%s\n' "$code_signature" | grep -Fq 'Authority=Developer ID Application: Apple Inc. '; then
       printf 'bootstrap: refusing unverified Apple Container binary at %s\n' "$container_bin" >&2
       return 1
     fi
