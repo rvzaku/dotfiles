@@ -225,6 +225,9 @@ ensure_ssh_identity() {
     printf 'bootstrap: refusing non-Ed25519 SSH private key (%s)\n' "${key_type:-unknown}" >&2
     return 1
   fi
+  github_gh() {
+    env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GH_HOST gh "$@"
+  }
   existing_public=''
   if [ -e "$public" ] || [ -L "$public" ]; then
     [ -f "$public" ] || { printf '%s\n' 'bootstrap: SSH public-key path is not a regular file' >&2; return 1; }
@@ -239,7 +242,7 @@ ensure_ssh_identity() {
   check_command gh
   local key_line title api_keys
   key_line=$(printf '%s\n' "$derived_public" | awk '{print $1 " " $2}')
-  api_keys=$(gh api user/keys --jq '.[].key') || {
+  api_keys=$(github_gh api user/keys --jq '.[].key') || {
     printf '%s\n' 'bootstrap: GitHub public-key API access failed; refusing to guess whether the key is registered' >&2
     return 1
   }
@@ -247,14 +250,13 @@ ensure_ssh_identity() {
     printf '%s\n' '    Ed25519 public key is already registered with GitHub'
   else
     title="dotfiles-$(hostname -s 2>/dev/null || printf mac)-$(date -u +%Y%m%d)"
-    gh ssh-key add "$public" --title "$title"
+    github_gh ssh-key add "$public" --title "$title"
   fi
 
   # Fetch GitHub's published SSH host keys over authenticated HTTPS, pin them
   # in known_hosts, and use strict checking. Never use ssh-keyscan or TOFU.
   local meta="${TMPDIR:-/tmp}/bootstrap-github-meta.$$.json" known_hosts known_tmp host_keys
-  env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GH_HOST \
-    gh api meta >"$meta" || { rm -f "$meta"; return 1; }
+  github_gh api meta >"$meta" || { rm -f "$meta"; return 1; }
   host_keys=$(jq -r '.ssh_keys[]?' "$meta")
   [ -n "$host_keys" ] || { rm -f "$meta"; printf '%s\n' 'bootstrap: GitHub API returned no SSH host keys' >&2; return 1; }
   known_hosts="$ssh_dir/known_hosts"

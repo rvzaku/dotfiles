@@ -94,7 +94,6 @@ SCRIPT
     return 0
   fi
   rm "$FAKE/pi-signed"
-  rm "$FAKE/pi-signed"
   PI_TEST_LOG="$log" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" fallback
   assert_file_contains "$log" 'plain --approve fallback' 'plain Pi fallback was not used'
   rm "$FAKE/pi"
