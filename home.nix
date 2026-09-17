@@ -155,6 +155,18 @@ let
       source = "bin";
       target = ".local/bin";
     }
+    {
+      source = ".agents/skills";
+      target = ".agents/skills";
+    }
+    {
+      source = ".agents/skills";
+      target = ".claude/skills";
+    }
+    {
+      source = ".agents/skills";
+      target = ".codex/skills";
+    }
   ];
 
   # Single source of truth for the explicit (non-directoryRoots) managed

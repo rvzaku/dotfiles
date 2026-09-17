@@ -10,14 +10,8 @@ case "$npm_prefix" in
     npm_prefix="$HOME/.local/npm"
     ;;
 esac
-extra_path="${DOTFILES_EXTRA_PATH:-}"
 trusted_path="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin"
-if [ -n "$extra_path" ]; then
-  # Explicit fixture/operator override; normal activation keeps trusted bins first.
-  export PATH="$extra_path:$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
-else
-  export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
-fi
+export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
 
 usage() {
   printf 'usage: %s [--install]\n' "$0"

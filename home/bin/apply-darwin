@@ -64,9 +64,9 @@ warn_homebrew_inventory() {
   fi
   local config_ref="${ROOT}#darwinConfigurations.${DOTFILES_HOST}.config.homebrew" item
   local declared_formulae declared_casks declared_taps formulae casks taps
-  declared_formulae=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" (map (x: x.name) xs)' "$config_ref.brews" 2>/dev/null) || return 1
-  declared_casks=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" (map (x: x.name) xs)' "$config_ref.casks" 2>/dev/null) || return 1
-  declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" (map (x: x.name) xs)' "$config_ref.taps" 2>/dev/null) || return 1
+  declared_formulae=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" xs' "$config_ref.brews" 2>/dev/null) || return 1
+  declared_casks=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" xs' "$config_ref.casks" 2>/dev/null) || return 1
+  declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" xs' "$config_ref.taps" 2>/dev/null) || return 1
   formulae=$(brew list --formula 2>/dev/null || true)
   casks=$(brew list --cask 2>/dev/null || true)
   taps=$(brew tap 2>/dev/null || true)

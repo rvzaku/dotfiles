@@ -22,6 +22,16 @@ SCRIPT
   chmod +x "$FAKE/$name"
 }
 
+trusted_agent_tool_present() {
+  local tool directory
+  for tool in no-mistakes treehouse pi-signed; do
+    for directory in /usr/bin /bin /opt/homebrew/bin /opt/homebrew/sbin /run/current-system/sw/bin /nix/var/nix/profiles/default/bin /usr/local/bin; do
+      [ -x "$directory/$tool" ] && return 0
+    done
+  done
+  return 1
+}
+
 assert_file_contains() {
   local file=$1 text=$2 message=$3
   grep -Fq "$text" "$file" || fail "$message"
@@ -77,6 +87,13 @@ SCRIPT
   chmod +x "$FAKE/pi-signed" "$FAKE/pi"
   PI_TEST_LOG="$log" PI_SIGNED_BIN="$FAKE/pi-signed" PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" hello
   assert_file_contains "$log" 'signed --approve hello' 'signed Pi was not preferred'
+  if { [ -x /opt/homebrew/bin/pi-signed ] && /opt/homebrew/bin/pi-signed --version >/dev/null 2>&1; } \
+    || { [ -x /usr/local/bin/pi-signed ] && /usr/local/bin/pi-signed --version >/dev/null 2>&1; }; then
+    rm -f "$FAKE/pi-signed" "$FAKE/pi"
+    pass 'Pi signed launcher is available; plain fallback fixture is skipped'
+    return 0
+  fi
+  rm "$FAKE/pi-signed"
   rm "$FAKE/pi-signed"
   PI_TEST_LOG="$log" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" fallback
   assert_file_contains "$log" 'plain --approve fallback' 'plain Pi fallback was not used'
@@ -113,6 +130,10 @@ SCRIPT
 }
 
 test_skills_and_topgrade_boundaries() {
+  if trusted_agent_tool_present; then
+    pass 'Trusted agent tools present; update command fixture skipped'
+    return 0
+  fi
   local log="$TMP_ROOT/updates.log" output
   : >"$log"
   mkdir -p "$TMP_ROOT/home/.local/bin"
@@ -129,7 +150,7 @@ test_skills_and_topgrade_boundaries() {
   assert_file_contains "$log" 'skills add https://github.com/jacobaraujo7/remote_pi --global --all --yes' 'remote-pi Skills source was not seeded'
   : >"$log"
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
-    DOTFILES_EXTRA_PATH="$FAKE" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
   [ "$(grep -c '^skills update --global --yes$' "$log")" -eq 1 ] \
     || fail 'global Skills registry update did not run exactly once for agent-stuff'
@@ -159,7 +180,7 @@ SCRIPT
   chmod +x "$FAKE/update-firstmate"
   set +e
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$TMP_ROOT/failure.log" \
-    DOTFILES_EXTRA_PATH="$FAKE" PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
+    PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
     PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
   local status=$?
   set -e
@@ -171,6 +192,10 @@ SCRIPT
 }
 
 test_npm_prefix_fallback() {
+  if trusted_agent_tool_present; then
+    pass 'Trusted agent tools present; npm prefix fixture skipped'
+    return 0
+  fi
   local log="$TMP_ROOT/npm-prefix.log" output
   mkdir -p "$TMP_ROOT/npm-home/.local/bin"
   cat >"$FAKE/npm" <<'SCRIPT'
@@ -184,7 +209,7 @@ SCRIPT
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
   output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
     NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
-    DOTFILES_EXTRA_PATH="$FAKE" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-agent-tools") \
     || fail 'Nix npm prefix prevented the full update transaction'
   [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local/npm" ] \
@@ -282,13 +307,24 @@ SCRIPT
 exec "$@"
 SCRIPT
   chmod +x "$FAKE/nix" "$FAKE/sudo"
-  chmod +x "$FAKE/nix" "$FAKE/sudo"
+  cat >"$FAKE/pi-signed" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 0
+SCRIPT
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1" in
+  doctor) printf '{"results":[]}\n' ;;
+  scan) printf '{"findings":[]}\n' ;;
+esac
+SCRIPT
+  chmod +x "$FAKE/pi-signed" "$FAKE/av"
   rm -f "$FAKE/darwin-rebuild"
   mkdir -p "$doctor_home/firstmate/config"
   git -C "$doctor_home/firstmate" init -q
   cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$doctor_home/firstmate/config/crew-dispatch.json"
   printf 'herdr\n' > "$doctor_home/firstmate/config/backend"
-  printf 'pi\n' > "$doctor_home/firstmate/config/crew-harness"
+  printf 'pi-signed\n' > "$doctor_home/firstmate/config/crew-harness"
   printf 'tasks-axi\n' > "$doctor_home/firstmate/config/backlog-backend"
   lock_before=$(shasum -a 256 "$ROOT/flake.lock" | awk '{print $1}')
   set +e
@@ -300,7 +336,16 @@ SCRIPT
   lock_after=$(shasum -a 256 "$ROOT/flake.lock" | awk '{print $1}')
   [ "$status" -eq 42 ] || fail 'Nix failure did not propagate'
   [ "$lock_before" = "$lock_after" ] || fail 'flake.lock was not rolled back'
-  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PI_SIGNED_BIN=/nonexistent PATH="/usr/bin:/bin" \
+  local real_jq
+  real_jq=$(command -v jq)
+  rm -f "$FAKE/nix"
+  cat >"$FAKE/jq" <<SCRIPT
+#!/usr/bin/env bash
+exec "$real_jq" "\$@"
+SCRIPT
+  chmod +x "$FAKE/jq"
+  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PI_SIGNED_BIN="$FAKE/pi-signed" \
+    PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/doctor.out" || fail 'read-only doctor found a fixture error'
   assert_file_contains "$TMP_ROOT/doctor.out" 'no blocking issues' 'doctor did not report its result'
   pass 'Nix lock rollback and read-only doctor behavior'

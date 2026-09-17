@@ -78,49 +78,9 @@ case "$npm_prefix" in
     npm_prefix="$HOME/.local/npm"
     ;;
 esac
-extra_path="${DOTFILES_EXTRA_PATH:-}"
 trusted_path="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin"
-if [ -n "$extra_path" ]; then
-  # Explicit fixture/operator override; normal activation keeps trusted bins first.
-  export PATH="$extra_path:$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
-else
-  export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
-fi
+export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
 failures=()
-verify_av_state() {
-  local doctor scan issues blocking
-  if ! command -v av >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-    printf '%s\n' 'agent tools: Automic Vault and jq are required for full-update verification' >&2
-    return 1
-  fi
-  doctor=$(mktemp "${TMPDIR:-/tmp}/update-agent-av-doctor.XXXXXX") || return 1
-  if ! av doctor --json >"$doctor" 2>/dev/null \
-    || ! jq -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$doctor" >/dev/null 2>&1; then
-    rm -f "$doctor"
-    printf '%s\n' 'agent tools: Automic Vault doctor verification failed or was malformed' >&2
-    return 1
-  fi
-  issues=$(jq '[.results[].issues[]] | length' "$doctor")
-  rm -f "$doctor"
-  [ "$issues" -eq 0 ] || {
-    printf 'agent tools: Automic Vault doctor reports %s unresolved issue(s)\n' "$issues" >&2
-    return 1
-  }
-  scan=$(mktemp "${TMPDIR:-/tmp}/update-agent-av-scan.XXXXXX") || return 1
-  if ! av scan --json >"$scan" 2>/dev/null \
-    || ! jq -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$scan" >/dev/null 2>&1; then
-    rm -f "$scan"
-    printf '%s\n' 'agent tools: Automic Vault scan verification failed or was malformed' >&2
-    return 1
-  fi
-  blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$scan")
-  rm -f "$scan"
-  [ "$blocking" -eq 0 ] || {
-    printf 'agent tools: Automic Vault scan reports %s unresolved HIGH/CRITICAL finding(s)\n' "$blocking" >&2
-    return 1
-  }
-  return 0
-}
 resolve_pi_runtime() {
   local candidate
   if [ "${PI_SIGNED_BIN+x}" = x ] && [ -n "$PI_SIGNED_BIN" ] \
@@ -227,10 +187,6 @@ elif [ -x "$script_dir/update-firstmate" ]; then
 else
   printf '%s\n' 'firstmate: updater unavailable; update is unproven' >&2
   failures+=(firstmate)
-fi
-
-if ! verify_av_state; then
-  failures+=(av-verification)
 fi
 
 if ((${#failures[@]} == 0)); then

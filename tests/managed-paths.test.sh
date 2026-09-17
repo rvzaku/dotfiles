@@ -21,7 +21,8 @@ mkdir -p \
   "$TEST_HOME/.agents" \
   "$TEST_HOME/.local" \
   "$TEST_HOME/.pi/agent" \
-  "$TEST_HOME/.claude"
+  "$TEST_HOME/.claude" \
+  "$TEST_HOME/.codex"
 
 printf 'managed skill\n' > "$REPO/home/.agents/skills/managed.md"
 printf 'source-only resource\n' > "$REPO/home/.agents/skills/source-only.md"
@@ -37,6 +38,8 @@ printf 'managed Claude settings\n' > "$REPO/home/claude-settings"
 # Model the old whole-directory links that caused the original collision.
 ln -s "$REPO/home/.agents/skills" "$TEST_HOME/.agents/skills"
 ln -s "$REPO/home/.pi/agent/extensions" "$TEST_HOME/.pi/agent/extensions"
+ln -s "$REPO/home/.agents/skills" "$TEST_HOME/.claude/skills"
+ln -s "$REPO/home/.agents/skills" "$TEST_HOME/.codex/skills"
 ln -s "$REPO/home/bin" "$TEST_HOME/.local/bin"
 
 manifest="$TMP_ROOT/manifest0"
@@ -51,6 +54,8 @@ directories="$TMP_ROOT/directories0"
 {
   printf '%s\0%s\0' '.agents/skills' "$REPO/home/.agents/skills"
   printf '%s\0%s\0' '.pi/agent/extensions' "$REPO/home/.pi/agent/extensions"
+  printf '%s\0%s\0' '.claude/skills' "$REPO/home/.agents/skills"
+  printf '%s\0%s\0' '.codex/skills' "$REPO/home/.agents/skills"
   printf '%s\0%s\0' '.local/bin' "$REPO/home/bin"
 } > "$directories"
 
@@ -74,6 +79,10 @@ ln -s "$REPO/home/.pi/agent/extensions/managed.js" \
   "$TEST_HOME/.pi/agent/extensions/managed.js"
 ln -s "$REPO/home/bin/public-command" "$TEST_HOME/.local/bin/public-command"
 [ -f "$TEST_HOME/.pi/agent/extensions/managed.js" ] || fail "extension was lost"
+[ -d "$TEST_HOME/.claude/skills" ] && [ ! -L "$TEST_HOME/.claude/skills" ] \
+  || fail "Claude skills directory link was not migrated"
+[ -d "$TEST_HOME/.codex/skills" ] && [ ! -L "$TEST_HOME/.codex/skills" ] \
+  || fail "Codex skills directory link was not migrated"
 [ "$(jq -r '.hooks.before' "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json")" = preserve ] \
   || fail "Pi hooks were not preserved"
 [ "$(jq -r '.theme' "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json")" = repo ] \
