@@ -188,15 +188,17 @@ user-owned global npm prefix at `~/.local/npm` (never `/nix/store`). Firstmate
 remains an agent distribution rather than a CLI; `bootstrap.sh` makes the
 upstream checkout available at `~/firstmate` and adds its `bin/` directory to
 PATH. Bootstrap and update-firstmate materialize the selected Firstmate config
-leaves as private regular files. `rebuild.sh` only applies the current locked
-Darwin state and never mutates the external Firstmate checkout; these helpers
-never symlink the whole Firstmate config.
+leaves as private regular files. `rebuild.sh` applies locked Darwin state first, then
+it materializes only the selected captain-private leaves and never mutates the
+external Firstmate tracked source; these helpers never symlink the whole config.
 
 Claude, Codex, OpenCode, Grok, and Pi retain adapters for their officially
 supported interfaces. This does not install OpenCode or Grok clients merely
 because an adapter exists, and wrappers do not bypass independent tests,
 no-mistakes, or escalation boundaries. Topgrade is the routine latest-version
 update path; normal Home Manager activation installs declared software.
+Determinate Nix owns daemon and self-updates, so Topgrade disables its `nix
+upgrade-nix` stage and does not compete with the flake-lock transaction.
 Only documented wrappers, doctor, `ensure-agent-tools`, and update commands are
 linked into `~/.local/bin`; internal adoption and backup helpers stay private.
 
@@ -252,11 +254,12 @@ All packages execute with your full user permissions and must be trusted like an
 
 Global Skills are seeded and updated through the `skills` registry client, not
 by Home Manager copying upstream trees. `home/bin/update-skills --seed` installs
-the Firstmate, Vision (`kunchenguid/vision`), AXI, Matt Pocock, agent-stuff,
-Impeccable, and No Mistakes sources globally, then updates every registered
-skill. The writable local exception is Backpass's user-scope overflow source;
-credentials, trust, sessions, caches, and registry metadata remain runtime
-state outside Git.
+only selected skills from the Firstmate, Vision (`kunchenguid/vision`), AXI,
+Matt Pocock, agent-stuff, Impeccable, No Mistakes, and Remote Pi sources (never
+`--all`), then updates every registered skill exactly once. Backpass and the
+Remote Pi compatibility adapters remain authored local resources; the
+unselected `tmux` skill is removed when encountered. Credentials, trust,
+sessions, caches, and registry metadata remain runtime state outside Git.
 
 Home Manager deliberately does not manage `~/.pi/agent` itself, or Pi authentication, sessions, trust decisions, caches, npm/git package trees, or any other runtime state. The model overrides contain no credentials or endpoint settings, do not choose a default model, and only take effect after you authenticate Pi yourself. This remains an additive post-video layer: it does not install Pi, a launcher, or package source code into this repository.
 

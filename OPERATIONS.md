@@ -46,11 +46,14 @@ It never uses Home Manager's force escape hatch.
 ## Updates
 
 No-argument `topgrade` is the complete update transaction: Topgrade's normal
-Nix/Homebrew/system stages run, followed by `update-agent-tools`, which fetches
+Homebrew/system stages run (its Determinate `nix` self-update stage is disabled), followed by `update-agent-tools`, which fetches
 Kun dotfiles without merging, updates mutable npm tools, no-mistakes, Treehouse,
 all globally registered Skills, and Firstmate. Migration backups are pruned only after every stage owned by that
 complete transaction succeeds; failures retain all snapshots. `topgrade
 --only <target>` remains targeted and does not become a full transaction.
+Topgrade disables its `nix upgrade-nix` stage because Determinate Nix owns the
+daemon and self-updates; this avoids competing with the repository's flake-lock
+transaction.
 
 Firstmate is fetched directly from `https://github.com/kunchenguid/firstmate.git`
 on every full update. Dirty, ahead, detached, or diverged local work is
@@ -70,10 +73,11 @@ pins GitHub's published host keys from `gh api meta` before probing with
 Keychain/SSH agent and is never written to Git or Nix. `dot-doctor` is
 read-only and reports missing identity state.
 
-Bootstrap and update-firstmate materialize Firstmate's `config/backend`,
+Bootstrap, rebuild, and update-firstmate materialize Firstmate's `config/backend`,
 `config/crew-harness`, `config/backlog-backend`, and authored
-`config/crew-dispatch.json` atomically and idempotently. `rebuild.sh` only
-applies the current locked Darwin state. Existing differing files are moved to
+`config/crew-dispatch.json` atomically and idempotently. `rebuild.sh` applies
+the locked Darwin state first, then materializes these captain-private leaves;
+it never mutates Firstmate tracked source. Existing differing files are moved to
 the Firstmate state backup directory before replacement; runtime config remains
 outside Git.
 

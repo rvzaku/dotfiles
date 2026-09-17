@@ -202,6 +202,18 @@ test_firstmate_config_no_pi_fixture() {
   pass 'Firstmate config fixture preserves or resolves crew harness safely'
 }
 
+test_cursor_backup_fixture() {
+  local cursor_home="$fixture_root/cursor-home" backup output
+  backup="$cursor_home/.local/state/dotfiles/backups/cursor-leftovers/20260917T000000Z-1/.cursor"
+  mkdir -p "$(dirname "$backup")"
+  printf '%s\n' 'preserved Cursor runtime' >"$backup"
+  output=$(HOME="$cursor_home" DOTFILES_ROOT="$ROOT" PATH="/usr/bin:/bin" \
+    XDG_STATE_HOME="$cursor_home/.local/state" "$ROOT/home/bin/dot-doctor" 2>&1 || true)
+  assert_contains "$output" 'Cursor leftover was preserved in the protected backup root' \
+    'doctor did not accept a preserved Cursor backup as resolved'
+  pass 'Cursor leftovers are preserved and recognized from the protected backup root'
+}
+
 test_installer_verification_fixture() {
   mkdir -p "$fixture_root/pkg"
   printf 'fixture-installer\n' > "$fixture_root/pkg/installer"
@@ -231,5 +243,6 @@ test_bootstrap_scratch_resume
 test_bootstrap_first_run_rerun_interruption
 test_brew_zap_inventory_fixture
 test_agent_health_fixture
+test_cursor_backup_fixture
 test_installer_verification_fixture
 test_quota_dispatch_integration

@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 raw_topgrade=$(type -P topgrade || true)
 if [ -z "$raw_topgrade" ]; then
-  printf '%s\n' 'topgrade-raw: topgrade is unavailable' >&2
+  printf '%s\n' 'topgrade-raw: topgrade is unavailable; install it through the declared Nix/Home Manager toolchain' >&2
   exit 127
 fi
-exec "$raw_topgrade" "$@"
+"$raw_topgrade" "$@"
+status=$?
+if [ "$status" -ne 0 ]; then
+  printf 'topgrade-raw: underlying topgrade exited %s; inspect its stage output and rerun the targeted recovery\n' "$status" >&2
+fi
+exit "$status"

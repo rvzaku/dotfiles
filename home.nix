@@ -252,7 +252,6 @@ in
     wget
     curl
     rsync
-    tmux
     git
     git-lfs
     gh
@@ -347,6 +346,7 @@ in
     "/nix/var/nix/profiles/default/bin"
     "/etc/profiles/per-user/$USER/bin"
     "/usr/local/bin"
+    "$HOME/.nix-profile/bin"
     "$HOME/.local/npm/bin"
     "$HOME/firstmate/bin"
     "$HOME/.local/bin"
@@ -355,9 +355,14 @@ in
   home.sessionVariables = {
     EDITOR = "nvim";
     VISUAL = "nvim";
-    NPM_CONFIG_PREFIX = "$HOME/.local/npm";
-    PNPM_HOME = "$HOME/.local/share/pnpm";
+    NPM_CONFIG_PREFIX = "${homeDirectory}/.local/npm";
+    PNPM_HOME = "${homeDirectory}/.local/share/pnpm";
   };
+
+  # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
+  home.activation.ensureUserNpmPrefix = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    mkdir -p "$HOME/.local/npm/bin" "$HOME/.local/npm/lib" "$HOME/.local/share/pnpm"
+  '';
 
   # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
   # declarative activation. Topgrade owns later latest-version updates.
@@ -402,6 +407,9 @@ in
   programs.topgrade = {
     enable = true;
     settings = {
+      # Determinate Nix owns daemon/self-updates; Topgrade must not invoke
+      # `nix upgrade-nix` while this checkout manages its flake transaction.
+      disable = [ "nix" ];
       misc = {
         assume_yes = false;
         no_retry = true;
@@ -426,7 +434,16 @@ in
     syntaxHighlighting.enable = true;
     initContent = ''
       bindkey '^f' autosuggest-accept
-      export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:$PATH"
+      typeset -a _dotfiles_path_tail=()
+      for _dotfiles_entry in ''${(s.:.)PATH}; do
+        case "$_dotfiles_entry" in
+          /usr/bin|/bin|/usr/sbin|/sbin|/opt/homebrew/bin|/opt/homebrew/sbin|/run/current-system/sw/bin|/nix/var/nix/profiles/default/bin|/etc/profiles/per-user/$USER/bin|/usr/local/bin|/nix/var/nix/profiles/per-user/$USER/bin|$HOME/.nix-profile/bin|$HOME/.local/npm/bin|$HOME/firstmate/bin|$HOME/.local/bin|$HOME/.local/share/pnpm/bin) continue ;;
+        esac
+        _dotfiles_path_tail+=("$_dotfiles_entry")
+      done
+      PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$USER/bin:/usr/local/bin:$HOME/.nix-profile/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin''${_dotfiles_path_tail:+:''${(j.:.)_dotfiles_path_tail}}"
+      export PATH
+      unset _dotfiles_entry _dotfiles_path_tail
     '';
     shellAliases = {
       ".." = "cd ..";
@@ -440,7 +457,6 @@ in
       gp = "agent-grok-yolo";
       py = "agent-pi-yolo";
       backpass-learn = "backpass --scope user --strict";
-      backpass-apply = "backpass-apply-qualified";
     };
   };
 

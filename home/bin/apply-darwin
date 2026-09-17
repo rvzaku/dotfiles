@@ -4,6 +4,15 @@
 # This is deliberately the only narrow helper shared by bootstrap and rebuild:
 # it owns the Homebrew zap warning and restores flake.lock if the switch fails.
 set -u
+# shellcheck disable=SC2329 # invoked by the EXIT trap
+failure_report() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    printf 'dotfiles: apply-darwin failed (exit %s); inspect the preceding step and rerun after remediation\n' "$status" >&2
+  fi
+}
+trap failure_report EXIT
+
 
 resolve_script_root() {
   local script_path="${BASH_SOURCE[0]}" link script_dir
@@ -64,9 +73,19 @@ warn_homebrew_inventory() {
   fi
   local config_ref="${ROOT}#darwinConfigurations.${DOTFILES_HOST}.config.homebrew" item
   local declared_formulae declared_casks declared_taps formulae casks taps
-  declared_formulae=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" xs' "$config_ref.brews" 2>/dev/null) || return 1
-  declared_casks=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" xs' "$config_ref.casks" 2>/dev/null) || return 1
-  declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" xs' "$config_ref.taps" 2>/dev/null) || return 1
+  local names_expr='xs: builtins.concatStringsSep "\n" (map (x: if builtins.isAttrs x then (x.name or (throw "Homebrew entry has no name")) else x) xs)'
+  declared_formulae=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.brews" 2>/dev/null) || {
+    printf 'dotfiles: could not evaluate declared Homebrew formulae for the exact zap inventory\n' >&2
+    return 1
+  }
+  declared_casks=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.casks" 2>/dev/null) || {
+    printf 'dotfiles: could not evaluate declared Homebrew casks for the exact zap inventory\n' >&2
+    return 1
+  }
+  declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.taps" 2>/dev/null) || {
+    printf 'dotfiles: could not evaluate declared Homebrew taps for the exact zap inventory\n' >&2
+    return 1
+  }
   formulae=$(brew list --formula 2>/dev/null || true)
   casks=$(brew list --cask 2>/dev/null || true)
   taps=$(brew tap 2>/dev/null || true)
@@ -127,11 +146,28 @@ if [ -z "${DOTFILES_MACHINE_ROLE:-}" ] && [ -f "$machine_marker" ]; then
   DOTFILES_MACHINE_ROLE=$(cat "$machine_marker" 2>/dev/null || true)
 fi
 if [ -z "${DOTFILES_MACHINE_ROLE:-}" ]; then
-  DOTFILES_MACHINE_ROLE=other
+  if [ -t 0 ]; then
+    printf 'Is this your own Mac (zap undeclared Homebrew items)? [y/N] ' >&2
+    read -r role_answer || exit 1
+    case "$role_answer" in
+      y|Y|yes|YES) DOTFILES_MACHINE_ROLE=own ;;
+      *) DOTFILES_MACHINE_ROLE=other ;;
+    esac
+    mkdir -p "$(dirname "$machine_marker")"
+    printf '%s\n' "$DOTFILES_MACHINE_ROLE" >"$machine_marker"
+    chmod 600 "$machine_marker"
+    printf 'dotfiles: recorded machine role %s at %s\n' "$DOTFILES_MACHINE_ROLE" "$machine_marker" >&2
+  else
+    DOTFILES_MACHINE_ROLE=other
+    printf 'dotfiles: no machine-role marker and no interactive terminal; using protective role=other. Set it explicitly with: mkdir -p %q && printf "own\\n" > %q (or replace own with other)\n' "$(dirname "$machine_marker")" "$machine_marker" >&2
+  fi
 fi
 case "$DOTFILES_MACHINE_ROLE" in
   own|other) export DOTFILES_MACHINE_ROLE ;;
-  *) DOTFILES_MACHINE_ROLE=other; export DOTFILES_MACHINE_ROLE ;;
+  *)
+    printf 'dotfiles: invalid machine-role %q; use own or other at %s\n' "$DOTFILES_MACHINE_ROLE" "$machine_marker" >&2
+    exit 1
+    ;;
 esac
 legacy_alias="$HOME/.dotfiles"
 if [ -L "$legacy_alias" ]; then
@@ -179,9 +215,11 @@ fi
 restore_lock() {
   [ -z "$lock_backup" ] || cp -p "$lock_backup" "$ROOT/flake.lock"
 }
+# shellcheck disable=SC2329 # invoked by the EXIT and signal traps
 cleanup() {
   [ -z "$lock_backup" ] || rm -f "$lock_backup"
 }
+# shellcheck disable=SC2329 # invoked by signal traps
 handle_interrupt() {
   local signal_status=$1
   trap - INT TERM HUP

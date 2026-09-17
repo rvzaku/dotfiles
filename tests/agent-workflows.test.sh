@@ -142,11 +142,12 @@ test_skills_and_topgrade_boundaries() {
   done
   HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-skills" --seed >/dev/null || fail 'Skills source seeding failed'
-  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --all --yes' 'Vision Skills source was not seeded'
-  assert_file_contains "$log" 'skills add https://github.com/mitsuhiko/agent-stuff --global --all --yes' 'agent-stuff Skills source was not seeded'
-  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/lavish-axi --global --all --yes' 'lavish-axi Skills source was not seeded'
-  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/gnhf --global --all --yes' 'gnhf Skills source was not seeded'
-  assert_file_contains "$log" 'skills add https://github.com/jacobaraujo7/remote_pi --global --all --yes' 'remote-pi Skills source was not seeded'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --skill vision --yes' 'Vision Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/mitsuhiko/agent-stuff --global --skill anachb apple-mail' 'agent-stuff Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/lavish-axi --global --skill lavish --yes' 'lavish-axi Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/gnhf --global --skill gnhf --yes' 'gnhf Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/jacobaraujo7/remote_pi --global --skill deploy-cockpit deploy-server' 'remote-pi Skills source was not seeded explicitly'
+  if grep -F -- '--all' "$log" >/dev/null 2>&1; then fail 'Skills seeding used --all and installed unselected skills'; fi
   : >"$log"
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \

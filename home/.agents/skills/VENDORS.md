@@ -1,7 +1,8 @@
 # Global vendor skills
 
 The global Skills registry is authoritative for upstream skill sources. Bootstrap
-seeds these sources with `skills add ... --global --all`; Home Manager links only
+seeds only selected skills from these sources with explicit `--skill` values;
+Home Manager links only
 the writable Backpass user-scope source below. The remaining checked-in skill
 files are retained as reviewable compatibility material and are not presented
 as the source of global registry truth.

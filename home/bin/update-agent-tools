@@ -4,6 +4,14 @@
 # directly with no arguments means the complete transaction.
 set -u
 
+failure_report() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    printf 'agent tools: full update failed/degraded (exit %s); inspect the named stage and rerun targeted recovery before retrying\n' "$status" >&2
+  fi
+}
+trap failure_report EXIT
+
 resolve_script_dir() {
   local script_path="${BASH_SOURCE[0]}" link script_dir
   while [ -L "$script_path" ]; do

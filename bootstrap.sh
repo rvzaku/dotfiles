@@ -5,6 +5,14 @@
 set -euo pipefail
 
 scratch_mode=false
+failure_report() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    printf 'bootstrap: failed (exit %s); address the reported step and rerun ./bootstrap.sh (existing state is preserved)\n' "$status" >&2
+  fi
+}
+trap failure_report EXIT
+
 case "${1:-}" in
   '') ;;
   --from-scratch) scratch_mode=true ;;
@@ -176,12 +184,17 @@ verify_av() {
     return 1
   fi
   issues=$(jq '[.results[].issues[]] | length' "$report" 2>/dev/null || printf invalid)
-  rm -f "$report"
   case "$issues" in
     0) ;;
-    ''|*[!0-9]*) printf '%s\n' 'bootstrap: Automic Vault doctor output could not be parsed' >&2; return 1 ;;
-    *) printf 'bootstrap: Automic Vault doctor reports %s unresolved issue(s)\n' "$issues" >&2; return 1 ;;
+    ''|*[!0-9]*) rm -f "$report"; printf '%s\n' 'bootstrap: Automic Vault doctor output could not be parsed' >&2; return 1 ;;
+    *)
+      printf 'bootstrap: Automic Vault doctor reports %s unresolved issue(s); complete the named hardening step and rerun bootstrap.sh\n' "$issues" >&2
+      jq -r '.results[]?.issues[]? | "  AV doctor: " + ((.name // .id // "issue")|tostring) + " - " + ((.description // .message // "remediation required")|tostring)' "$report" >&2 || true
+      rm -f "$report"
+      return 1
+      ;;
   esac
+  rm -f "$report"
 }
 
 github_oauth() {
@@ -297,8 +310,22 @@ EOF
   rm -f "$ssh_probe"
 }
 
+remove_ambient_github_helper() {
+  local helper_key='credential.https://github.com.helper'
+  if git config --system --get-regexp '^credential\.https://github\.com\.helper$' >/dev/null 2>&1; then
+    printf '%s\n' '    removing the ambient Command Line Tools GitHub credential helper; SSH + Keychain remain authoritative'
+    sudo git config --system --unset-all "$helper_key" || {
+      printf '%s\n' 'bootstrap: could not remove the ambient system GitHub credential helper' >&2
+      return 1
+    }
+  else
+    printf '%s\n' '    no ambient system GitHub credential helper is configured'
+  fi
+}
+
 harden_supported_credentials() {
   printf '%s\n' '==> Step 9: AV-supported credential hardening'
+  remove_ambient_github_helper
   local metadata="${TMPDIR:-/tmp}/bootstrap-av-hardeners.$$.json" tool applicable
   av hardeners --json >"$metadata"
   if ! jq -e '(.hardeners | type) == "array" and all(.hardeners[]; (.name | type) == "string" and (.applicable | type) == "boolean")' "$metadata" >/dev/null 2>&1; then
@@ -329,12 +356,17 @@ managed_security_gate() {
     return 1
   fi
   blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$report")
-  rm -f "$report"
   case "$blocking" in
-    ''|*[!0-9]*) printf '%s\n' 'bootstrap: Automic Vault scan output could not be parsed' >&2; return 1 ;;
+    ''|*[!0-9]*) rm -f "$report"; printf '%s\n' 'bootstrap: Automic Vault scan output could not be parsed' >&2; return 1 ;;
     0) printf '%s\n' '    Automic Vault reports no unresolved HIGH or CRITICAL findings' ;;
-    *) printf 'bootstrap: Automic Vault reports %s unresolved HIGH/CRITICAL finding(s); managed security is not complete\n' "$blocking" >&2; return 1 ;;
+    *)
+      printf 'bootstrap: Automic Vault reports %s unresolved HIGH/CRITICAL finding(s); managed security is not complete\n' "$blocking" >&2
+      jq -r '.findings[]? | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical") | "  AV scan: " + ((.id // .detector // "finding")|tostring) + " [" + .severity + "] - " + ((.description // .message // "remediation required")|tostring)' "$report" >&2 || true
+      rm -f "$report"
+      return 1
+      ;;
   esac
+  rm -f "$report"
 }
 
 verify_firstmate_checkout() {
@@ -352,6 +384,30 @@ verify_firstmate_checkout() {
     printf '%s\n' 'bootstrap: existing checkout is not a recognizable Firstmate source tree' >&2
     return 1
   }
+}
+
+preserve_cursor_leftover() {
+  local cursor_path="$HOME/.cursor" backup_base candidate stamp counter=0
+  if [ ! -e "$cursor_path" ] && [ ! -L "$cursor_path" ]; then
+    return 0
+  fi
+  backup_base="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/cursor-leftovers"
+  mkdir -p "$backup_base"
+  stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+  while :; do
+    candidate="$backup_base/$stamp-$$"
+    [ "$counter" -eq 0 ] || candidate="$candidate-$counter"
+    if mkdir "$candidate" 2>/dev/null; then
+      if mv "$cursor_path" "$candidate/.cursor"; then
+        printf 'bootstrap: preserved forbidden Cursor leftover at %s (not deleted)\n' "$candidate/.cursor" >&2
+        return 0
+      fi
+      rmdir "$candidate" 2>/dev/null || true
+      printf 'bootstrap: could not preserve Cursor leftover %s\n' "$cursor_path" >&2
+      return 1
+    fi
+    counter=$((counter + 1))
+  done
 }
 
 ensure_apple_container() {
@@ -379,7 +435,14 @@ ensure_apple_container() {
     rm -f "$release_json" "$pkg"
   fi
   check_command container
-  container system start
+  if ! container system status >/dev/null 2>&1; then
+    printf '%s\n' '    Apple Container services are not registered/running; starting via container system start' >&2
+    container system start --enable-kernel-install --timeout 60
+  fi
+  container system status >/dev/null 2>&1 || {
+    printf '%s\n' 'bootstrap: Apple Container services could not be registered and started; rerun container system start after addressing the Apple service prompt' >&2
+    return 1
+  }
 }
 
 ensure_firstmate() {
@@ -424,8 +487,9 @@ choose_machine_role
 validate_locked_flake
 printf '%s\n' '==> Step 5: first darwin-rebuild switch (installs AV, SSH tools, and declared apps)'
 DOTFILES_ROOT="$DIR" "$DIR/home/bin/apply-darwin" --bootstrap
+preserve_cursor_leftover
 bootstrap_user="$(id -un)"
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$bootstrap_user/bin:/usr/local/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin"
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$bootstrap_user/bin:/usr/local/bin:$HOME/.nix-profile/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin"
 verify_av
 github_oauth
 ensure_ssh_identity

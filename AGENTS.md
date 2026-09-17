@@ -54,7 +54,8 @@ reviewable, and requirement-backed.
   direct Kun FirstMate/config, Pi-signed then Pi fallback, Herdr/Treehouse/AXI,
   No Mistakes, Backpass, global Skills registry, Apple's signed Container, and
   read-only doctor. It is idempotent and owns all genuine interactive gates.
-- `rebuild.sh` applies the current locked Darwin state only: no lock update,
+- `rebuild.sh` applies the current locked Darwin state, materializes selected
+  Firstmate captain leaves, and runs the AV gate: no lock update,
   auto-commit/push/rebase, full Topgrade, or FirstMate source mutation.
 - Plain `topgrade` is the complete update transaction. Its custom stage fetches
   Kun FirstMate safely, updates native ecosystems, npm tools, Pi/package

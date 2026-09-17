@@ -161,9 +161,11 @@ fi
 if command -v skills >/dev/null 2>&1; then
   skills_json=$(mktemp "${TMPDIR:-/tmp}/dotfiles-skills.XXXXXX")
   if skills list -g --json >"$skills_json" 2>/dev/null && command -v jq >/dev/null 2>&1; then
-    local_skill_names=$(jq -r '.[]? | select(.name != "backpass" and (.source == null or .sourceType == "local")) | .name' "$skills_json" 2>/dev/null || printf '__parse_error__')
+    local_skill_names=$(jq -r '.[]? | select(.name != "backpass" and .name != "remote-pi" and .name != "agent-network" and (.source == null or .sourceType == "local")) | .name' "$skills_json" 2>/dev/null || printf '__parse_error__')
     if [ "$local_skill_names" = '__parse_error__' ]; then
       fail_check 'global Skills registry output could not be parsed'
+    elif jq -e 'any(.[]?; .name == "tmux")' "$skills_json" >/dev/null 2>&1; then
+      fail_check 'global Skills registry contains the unselected tmux skill; remove it with update-skills --seed'
     elif [ -n "$local_skill_names" ]; then
       fail_check "global Skills registry has local/unidentified sources: $(printf '%s' "$local_skill_names" | tr '\n' ' ')"
     else
@@ -329,8 +331,13 @@ else
   degraded_check 'npm is unavailable; global prefix is unproven'
 fi
 
-if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1 || [ -e "$HOME/.cursor" ]; then
+cursor_backup_root="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/cursor-leftovers"
+if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then
   fail_check 'Cursor tooling is present but explicitly forbidden by this workspace'
+elif [ -e "$HOME/.cursor" ] || [ -L "$HOME/.cursor" ]; then
+  fail_check 'Cursor leftover is present; run bootstrap.sh to move it into the protected backup root'
+elif find "$cursor_backup_root" -mindepth 2 -maxdepth 2 -name .cursor -print -quit 2>/dev/null | grep -q .; then
+  pass_check 'Cursor leftover was preserved in the protected backup root'
 else
   pass_check 'Cursor tooling is absent'
 fi
