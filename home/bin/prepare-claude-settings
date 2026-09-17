@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Detach the legacy repository-backed Claude user settings file before
+# Home Manager checks links. Claude Code owns ~/.claude/settings.json at
+# runtime and may add supported model/session preferences there.
+set -euo pipefail
+
+source=${1:?authored Claude settings source is required}
+target=${2:?Claude user settings target is required}
+
+mkdir -p "$(dirname "$target")"
+if [ -L "$target" ]; then
+  link=$(readlink "$target" || true)
+  case "$link" in
+    "$source"|*/home/.claude/settings.json)
+      tmp=$(mktemp "${target}.migration.XXXXXX")
+      if ! cp -p "$target" "$tmp"; then
+        rm -f "$tmp"
+        printf 'dotfiles: could not preserve the legacy Claude settings link at %s\n' "$target" >&2
+        exit 1
+      fi
+      rm -f "$target"
+      mv "$tmp" "$target"
+      printf 'dotfiles: detached legacy repository-backed Claude settings at %s\n' "$target" >&2
+      ;;
+    *)
+      printf 'dotfiles: preserving unknown Claude settings link at %s; authored base remains available separately\n' "$target" >&2
+      ;;
+  esac
+elif [ -e "$target" ]; then
+  : # Existing user-owned settings remain writable for Claude Code.
+elif [ -e "$source" ]; then
+  cp -p "$source" "$target"
+  printf 'dotfiles: seeded writable Claude user settings at %s\n' "$target" >&2
+else
+  printf 'dotfiles: authored Claude settings source is missing at %s\n' "$source" >&2
+  exit 1
+fi

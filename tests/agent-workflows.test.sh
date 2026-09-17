@@ -67,7 +67,7 @@ test_public_commands() {
   if printf '%s' "$actual" | jq -e 'index(".local/bin/mate")' >/dev/null; then
     fail 'mate command leaked into public command links'
   fi
-  for command in apply-darwin prepare-managed-paths prune-migration-backups update-skills; do
+  for command in apply-darwin prepare-managed-paths prepare-claude-settings prune-migration-backups update-skills; do
     [ -x "$ROOT/home/bin/$command" ] || fail "repository helper $command is not executable"
   done
   pass 'public command links are allowlisted and helpers stay private'

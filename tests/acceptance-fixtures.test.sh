@@ -78,9 +78,9 @@ test_brew_zap_inventory_fixture() {
   # The declaration is tap-qualified while brew list --cask returns the
   # installed short name. The inventory must not propose removing pi-launcher.
   stub_command nix 'case "$*" in *.brews) printf "herdr\n";; *.casks) printf "kunchenguid/tap/pi-launcher\n";; *.taps) printf "kunchenguid/tap\n";; esac'
-  stub_command darwin-rebuild 'exit 0'
+  stub_command darwin-rebuild 'printf "%s|%s\n" "$HOME" "$DOTFILES_USER" > "${DOTFILES_TEST_INVOCATION:-/dev/null}"; exit 0'
   # shellcheck disable=SC2016
-  stub_command sudo 'shift; while [ "$1" != "" ] && [ "${1#*=}" != "$1" ]; do shift; done; exec "$@"'
+  stub_command sudo 'printf "%s\n" "unexpected privileged activation" >&2; exit 99'
   local output status cask_removals
   mkdir -p "$fixture_root/home/.config/dotfiles"
   printf '%s\n' other >"$fixture_root/home/.config/dotfiles/machine-role"
@@ -92,7 +92,8 @@ test_brew_zap_inventory_fixture() {
   [ "$status" -ne 0 ] || fail 'protective machine activated without owner confirmation'
   assert_contains "$output" 'protective machine has no owner confirmation' 'protective zap stop was not reported'
   output=$(PATH="$fixture_root/bin:/usr/bin:/bin" DOTFILES_ROOT="$ROOT" \
-    DOTFILES_ASSUME_HOMEBREW_ZAP=1 HOME="$fixture_root/home" \
+    DOTFILES_ASSUME_HOMEBREW_ZAP=1 DOTFILES_USER=fixture-user \
+    DOTFILES_TEST_INVOCATION="$fixture_root/darwin-rebuild.invocation" HOME="$fixture_root/home" \
     "$ROOT/home/bin/apply-darwin" 2>&1)
   assert_contains "$output" 'undeclared-formula' 'zap warning omitted formula inventory'
   assert_contains "$output" 'undeclared-cask' 'zap warning omitted cask inventory'
@@ -101,6 +102,8 @@ test_brew_zap_inventory_fixture() {
   case " $cask_removals " in
     *' pi-launcher '*) fail 'tap-qualified cask was incorrectly marked for removal' ;;
   esac
+  assert_file_contains "$fixture_root/darwin-rebuild.invocation" \
+    "$fixture_root/home|fixture-user" 'activation did not retain the invoking user HOME contract'
   pass 'Brew zap inventory fixture warns before a stubbed switch'
   printf '%s\n' own >"$fixture_root/home/.config/dotfiles/machine-role"
   PATH="$fixture_root/bin:/usr/bin:/bin" DOTFILES_ROOT="$ROOT" HOME="$fixture_root/home" \

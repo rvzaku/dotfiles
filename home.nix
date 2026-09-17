@@ -179,7 +179,9 @@ let
     }
     {
       source = ".claude/settings.json";
-      target = ".claude/settings.json";
+      # Keep the authored base immutable while Claude owns its writable user
+      # settings file (which it updates with model/session preferences).
+      target = ".claude/settings.base.json";
     }
     {
       source = "AGENTS.md";
@@ -501,6 +503,14 @@ in
           --settings-target ${lib.escapeShellArg piSettingsTarget} \
           --jq ${lib.escapeShellArg "${pkgs.jq}/bin/jq"}
         rm -f "$manifest" "$directories"
+  '';
+
+  # Claude Code mutates ~/.claude/settings.json during normal use. Detach the
+  # predecessor repository link and seed a user-owned copy before Home
+  # Manager checks links; the authored base remains separately managed.
+  home.activation.prepareClaudeSettings = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+    ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-claude-settings" \
+      "${dotfiles}/home/.claude/settings.json" "$HOME/.claude/settings.json"
   '';
 
   home.file = managedFiles;
