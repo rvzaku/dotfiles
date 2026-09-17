@@ -39,7 +39,6 @@ resolve_dotfiles_root() {
   return 1
 }
 dotfiles_root=$(resolve_dotfiles_root 2>/dev/null || true)
-dotfiles_root=$(resolve_dotfiles_root 2>/dev/null || true)
 fetch_kun_dotfiles() {
   [ "${DOTFILES_FULL_UPDATE:-}" = 1 ] || return 0
   if [ -z "$dotfiles_root" ]; then
@@ -85,8 +84,39 @@ case "$npm_prefix" in
     npm_prefix="$HOME/.local/npm"
     ;;
 esac
-export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
+extra_path="${DOTFILES_EXTRA_PATH:-}"
+trusted_path="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin"
+if [ -n "$extra_path" ]; then
+  # Explicit fixture/operator override; normal activation keeps trusted bins first.
+  export PATH="$extra_path:$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
+else
+  export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
+fi
 failures=()
+update_pi_packages() {
+  local pi_bin=''
+  if [ "${PI_SIGNED_BIN+x}" = x ] && [ -x "$PI_SIGNED_BIN" ] \
+    && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
+    pi_bin="$PI_SIGNED_BIN"
+  elif [ "${PI_SIGNED_BIN+x}" != x ] && command -v pi-signed >/dev/null 2>&1 \
+    && pi-signed --version >/dev/null 2>&1; then
+    pi_bin=$(command -v pi-signed)
+  elif [ "${PI_SIGNED_BIN+x}" != x ] && command -v pi >/dev/null 2>&1; then
+    pi_bin=$(command -v pi)
+  elif [ "${PI_SIGNED_BIN+x}" = x ] && [ -n "$PI_SIGNED_BIN" ] \
+    && command -v pi >/dev/null 2>&1; then
+    pi_bin=$(command -v pi)
+  fi
+  if [ -z "$pi_bin" ]; then
+    printf '%s\n' 'Pi unavailable; skipping native Pi package/catalog update (degraded)' >&2
+    return 0
+  fi
+  if ! "$pi_bin" update; then
+    printf '%s\n' 'Pi native package/catalog update failed' >&2
+    failures+=(pi)
+  fi
+}
+update_pi_packages
 if ! fetch_kun_dotfiles; then
   failures+=(dotfiles-upstream)
 fi

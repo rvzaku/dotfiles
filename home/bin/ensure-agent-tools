@@ -10,7 +10,14 @@ case "$npm_prefix" in
     npm_prefix="$HOME/.local/npm"
     ;;
 esac
-export PATH="$npm_prefix/bin:$HOME/firstmate/bin:$PATH"
+extra_path="${DOTFILES_EXTRA_PATH:-}"
+trusted_path="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin"
+if [ -n "$extra_path" ]; then
+  # Explicit fixture/operator override; normal activation keeps trusted bins first.
+  export PATH="$extra_path:$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
+else
+  export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
+fi
 
 usage() {
   printf 'usage: %s [--install]\n' "$0"
@@ -62,17 +69,48 @@ else
   printf '%s\n' 'agent tools: npm unavailable; pinned npm tools are degraded' >&2
 fi
 
-# These projects publish signed/verified installers and are intentionally not
-# replaced by an unpinned npm or Homebrew package.
-if ! command -v no-mistakes >/dev/null 2>&1; then
-  curl --proto '=https' --tlsv1.2 -fsSL \
-    https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh \
-    || printf '%s\n' 'agent tools: no-mistakes installer failed' >&2
-fi
-if ! command -v treehouse >/dev/null 2>&1; then
-  curl --proto '=https' --tlsv1.2 -fsSL \
-    https://kunchenguid.github.io/treehouse/install.sh | sh \
-    || printf '%s\n' 'agent tools: treehouse installer failed' >&2
+# These projects publish release checksums. Download the pinned Apple Silicon
+# artifacts, verify both checksum manifests and artifacts, then install into a
+# user-owned directory; never curl-pipe-to-shell or run an unverified binary.
+install_verified_release() {
+  local tool=$1 version=$2 artifact=$3 artifact_sha=$4 sums_sha=$5
+  local base="https://github.com/kunchenguid/$tool/releases/download/$version"
+  local tmp sums archive extracted
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/$tool-install.XXXXXX") || return 1
+  sums="$tmp/checksums.txt"
+  archive="$tmp/$artifact"
+  if ! curl --proto '=https' --tlsv1.2 -fsSL "$base/checksums.txt" -o "$sums" \
+    || ! printf '%s  %s\n' "$sums_sha" "$sums" | shasum -a 256 -c - \
+    || ! curl --proto '=https' --tlsv1.2 -fsSL "$base/$artifact" -o "$archive" \
+    || ! (cd "$tmp" && printf '%s  %s\n' "$artifact_sha" "$artifact" | shasum -a 256 -c -); then
+    rm -rf "$tmp"
+    return 1
+  fi
+  tar xzf "$archive" -C "$tmp"
+  extracted="$tmp/$tool"
+  [ -f "$extracted" ] || { rm -rf "$tmp"; return 1; }
+  mkdir -p "$HOME/.local/bin"
+  install -m 755 "$extracted" "$HOME/.local/bin/$tool"
+  rm -rf "$tmp"
+}
+
+if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
+  if ! command -v no-mistakes >/dev/null 2>&1; then
+    install_verified_release no-mistakes v1.75.2 \
+      no-mistakes-v1.75.2-darwin-arm64.tar.gz \
+      d4388422e773f7ef5e9c87afb35c1e3be0d572c8c8940f54fe6238e88366f2d3 \
+      1bfc9b882b4edc1c4c0ecc412102411be8ef50cedae6d3f429b80297ece755a6 \
+      || printf '%s\n' 'agent tools: verified no-mistakes release installation failed' >&2
+  fi
+  if ! command -v treehouse >/dev/null 2>&1; then
+    install_verified_release treehouse v2.3.0 \
+      treehouse-v2.3.0-darwin-arm64.tar.gz \
+      1cb09bcfa830b4eec5e54beeaa71589adb9c5d828573dda0f5150e2d80cf13d \
+      c5daa7b483753fd3bcfdf8b0a876474e597ba1857eacf6b59b62671a8b26e542 \
+      || printf '%s\n' 'agent tools: verified treehouse release installation failed' >&2
+  fi
+else
+  printf '%s\n' 'agent tools: verified no-mistakes/treehouse releases are pinned for Apple Silicon macOS only' >&2
 fi
 
 # Recheck the required set. Pi remains outside this gate by design.

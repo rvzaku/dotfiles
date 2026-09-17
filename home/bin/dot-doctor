@@ -89,8 +89,8 @@ if [ -f "$ROOT/configuration.nix" ] && [ -f "$ROOT/home.nix" ]; then
 else
   fail_check 'nix configuration is incomplete'
 fi
-if grep -q 'cleanup = "zap"' "$ROOT/configuration.nix"; then
-  pass_check 'Homebrew zap is declared and documented as destructive cleanup'
+if grep -q 'onActivation.cleanup = "zap"' "$ROOT/configuration.nix"; then
+  pass_check 'Homebrew zap is the default and documented as destructive cleanup'
 else
   fail_check 'Homebrew cleanup policy is not explicit'
 fi
@@ -162,7 +162,9 @@ if command -v skills >/dev/null 2>&1; then
     else
       required_skill_sources=(
         kunchenguid/firstmate kunchenguid/vision kunchenguid/no-mistakes
-        kunchenguid/axi mattpocock/skills mitsuhiko/agent-stuff pbakaus/impeccable
+        kunchenguid/axi kunchenguid/lavish-axi kunchenguid/gnhf
+        mattpocock/skills mitsuhiko/agent-stuff pbakaus/impeccable
+        jacobaraujo7/remote_pi
       )
       missing_skill_sources=()
       for source in "${required_skill_sources[@]}"; do
@@ -238,6 +240,30 @@ if command -v av >/dev/null 2>&1; then
 else
   degraded_check 'Automic Vault CLI is unavailable; managed security status is unproven'
 fi
+
+# AV treats writable directories ahead of trusted system/package-manager bins
+# as a managed HIGH finding. Home Manager emits the trusted-first order; report
+# a clear blocking diagnostic if a stale shell still violates it.
+path_order_check() {
+  local old_ifs="$IFS" entry position=0 first_trusted=999999 first_writable=999999
+  IFS=:
+  for entry in $PATH; do
+    case "$entry" in
+      /usr/bin|/bin|/usr/sbin|/sbin|/opt/homebrew/bin|/opt/homebrew/sbin|/run/current-system/sw/bin|/nix/var/nix/profiles/default/bin|/usr/local/bin)
+        [ "$first_trusted" -eq 999999 ] && first_trusted=$position ;;
+      "$HOME/.local/bin"|"$HOME/.local/npm/bin"|"$HOME/firstmate/bin"|"$HOME/.local/share/pnpm/bin")
+        [ "$first_writable" -eq 999999 ] && first_writable=$position ;;
+    esac
+    position=$((position + 1))
+  done
+  IFS="$old_ifs"
+  if [ "$first_writable" -lt "$first_trusted" ]; then
+    fail_check 'writable PATH entries precede trusted system paths; reload the activated shell before claiming managed security'
+  else
+    pass_check 'PATH places trusted system/package-manager bins before writable user bins'
+  fi
+}
+path_order_check
 for tool in darwin-rebuild brew herdr topgrade treehouse no-mistakes gh gh-axi \
   chrome-devtools-axi lavish-axi tasks-axi quota-axi backpass acpx skills \
   container ssh claude codex; do

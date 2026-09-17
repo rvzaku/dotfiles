@@ -30,32 +30,36 @@ Running the switch builds:
 - Editor (Neovim config with the rose-pine moon theme)
 - Terminal (WezTerm config with the rose-pine moon theme and dimmed unfocused windows)
 - Agent configs (Claude, Codex, OpenCode, and Pi all share one AGENTS.md)
-- Global agent tools and skills (Firstmate, no-mistakes, treehouse, AXI tools, Backpass, Matt Pocock, Impeccable, and Remote Pi)
+- Global agent tools and skills (Firstmate, Vision, no-mistakes, AXI/lavish-axi,
+  gnhf, Backpass, Matt Pocock, Impeccable, and Remote Pi/agent-network)
 - Declarative yolo launch posture with independent validation and escalation boundaries
 - Apple Container CLI installed from Apple's signed release package (not Nix/Homebrew)
 
 ## Prerequisites
 
 - Apple Silicon Mac, by default.
-- Intel Mac: change one line.
-  In `configuration.nix`, set `nixpkgs.hostPlatform = "x86_64-darwin";` (the comment right there tells you the same thing).
+The bootstrap installer and declared host target are intentionally Apple
+Silicon-only; do not run this branch on Intel without separately reviewing and
+pinning an x86_64 installer.
 
 ## Fresh-machine setup
 
-On a brand new Mac, from a bare clone of this repo:
+On a brand-new Apple-Silicon Mac with no CLT, Git, Nix, Homebrew, AV, or
+GitHub authentication, download the pinned bootstrap script, verify its
+recorded SHA-256, and let it install CLT before obtaining the public checkout:
 
 ```sh
-git clone https://github.com/rvzaku/dotfiles.git
-cd dotfiles
+/usr/bin/curl --proto '=https' --tlsv1.2 -fsSLo /tmp/dotfiles-bootstrap.sh \
+  https://raw.githubusercontent.com/rvzaku/dotfiles/fm/dotfiles-full-pass-recovery/bootstrap.sh
+printf '%s  %s\n' '3fe574758e99750beaf6fa4d62324656a151a890186a8a5f1bc48eaee025dd15' /tmp/dotfiles-bootstrap.sh | /usr/bin/shasum -a 256 -c -
+/bin/bash /tmp/dotfiles-bootstrap.sh --from-scratch
 ```
 
-Before you run it: review "Make it yours" below.
-Change the host label or CPU architecture if needed, and read the Homebrew cleanup warning.
-`bootstrap.sh` applies the config to your machine, so do this first.
-
-```sh
-./bootstrap.sh
-```
+The script clones `~/dotfiles` over public HTTPS, derives the local username
+and hostname, and re-enters `./bootstrap.sh`; no manual pre-step or GitHub
+login is required. Existing `~/dotfiles` is never replaced. Read the zap,
+credential, and privacy prompts as they appear; rerun the same command after
+an interruption.
 
 `bootstrap.sh` performs the complete ordered setup: Apple Command Line Tools;
 Determinate Nix and locked-flake validation; the first darwin-rebuild (including
@@ -68,7 +72,12 @@ global Skills registry seeding; Apple's signed Container installer and service;
 and a read-only doctor. OAuth, passphrases, Secret Gates, administrator
 approval, and macOS privacy dialogs remain genuine interactive boundaries.
 Reruns preserve existing Firstmate work, SSH identity, credentials, and runtime
-state; no hidden `.dotfiles` alias is created.
+state; no hidden `.dotfiles` alias is created. Homebrew cleanup remains `zap`
+on every Mac; non-owned machines record a protective marker, show the exact
+inventory, and stop before activation unless the owner confirms. Determinate
+Nix, no-mistakes, and Treehouse downloads are pinned and checksum-verified; Apple's Container
+package is signature-checked before installation. Secrets and tokens remain
+under Automic Vault/native Keychain boundaries, never Git or Nix.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 
@@ -81,7 +90,8 @@ nix flake check --no-build
 nix build .#darwinConfigurations.mac.system --dry-run
 ```
 
-If you renamed the host label in "Make it yours", substitute your label for `mac` in these commands.
+Pure flake checks use the deterministic `mac` fallback; real rebuilds derive
+the host label from macOS `LocalHostName` (or `DOTFILES_HOST`).
 
 The collision-adoption fixture checks first activation, rerun idempotence,
 byte-preserving backups, Pi hook composition, and Nix syntax:
@@ -113,10 +123,10 @@ directories when Topgrade runs from an older shell.
 This repo is mine.
 If you clone it, review these before you run `bootstrap.sh`:
 
-- **Username**: run `./bootstrap.sh` (it detects your macOS username and offers to set it) OR change the single `user = "kunchen"` line in `flake.nix`.
-  Everything else (`configuration.nix`, `home.nix`, home directory paths) is threaded from that one variable.
-- **Host label** `"mac"`, in `flake.nix` and the shared `home/bin/apply-darwin` helper. Keep those references aligned if you rename it.
-  Keep the host label consistent wherever it appears.
+- **Username and host**: `bootstrap.sh` and `apply-darwin` derive `id -un` and
+  macOS `LocalHostName` at runtime and pass them to the impure flake evaluation.
+  No machine-specific identity is committed; override `DOTFILES_USER` or
+  `DOTFILES_HOST` only for a deliberate test/alternate host.
 - **CPU architecture**, `hostPlatform` in `configuration.nix` (see Prerequisites above).
 
 **Git identity:** this config deliberately does not set your git name or email.

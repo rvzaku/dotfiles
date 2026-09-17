@@ -4,6 +4,13 @@
 # are preserved, and the switch helper rolls flake.lock back on failure.
 set -euo pipefail
 
+scratch_mode=false
+case "${1:-}" in
+  '') ;;
+  --from-scratch) scratch_mode=true ;;
+  -h|--help) printf '%s\n' 'usage: ./bootstrap.sh [--from-scratch]' ; exit 0 ;;
+  *) printf '%s\n' 'usage: ./bootstrap.sh [--from-scratch]' >&2 ; exit 2 ;;
+esac
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 load_nix_profile() {
@@ -23,6 +30,10 @@ check_command() {
 
 ensure_apple_clt() {
   printf '%s\n' '==> Step 1: Apple Command Line Tools'
+  if [ "$(uname -s)" != Darwin ]; then
+    printf '%s\n' 'bootstrap: this fork supports macOS Apple Silicon only; refusing a non-macOS host' >&2
+    return 1
+  fi
   if xcrun --find clang >/dev/null 2>&1; then
     printf '%s\n' '    Apple Command Line Tools are available'
     return 0
@@ -46,14 +57,45 @@ ensure_apple_clt() {
   return 1
 }
 
+bootstrap_from_scratch() {
+  [ "$scratch_mode" = true ] || return 0
+  [ "${DOTFILES_BOOTSTRAP_REENTRY:-}" = 1 ] && return 0
+  printf '%s\n' '==> Clean-machine handoff: install Apple CLT, then obtain ~/dotfiles over HTTPS'
+  ensure_apple_clt
+  check_command git
+  local target="${HOME}/dotfiles" repo_url="${DOTFILES_REPO_URL:-https://github.com/rvzaku/dotfiles.git}"
+  if [ -e "$target" ]; then
+    printf 'bootstrap: refusing to replace existing %s; choose an empty target and rerun\n' "$target" >&2
+    return 1
+  fi
+  if [ -n "${DOTFILES_REF:-}" ]; then
+    git clone --branch "$DOTFILES_REF" --single-branch "$repo_url" "$target"
+  else
+    git clone "$repo_url" "$target"
+  fi
+  exec env DOTFILES_BOOTSTRAP_REENTRY=1 "$target/bootstrap.sh"
+}
+
 ensure_nix() {
   load_nix_profile
   printf '%s\n' '==> Step 2: Determinate Nix'
   if command -v nix >/dev/null 2>&1; then
     printf '%s\n' '    nix already installed, skipping'
   else
-    curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix \
-      | sh -s -- install --no-confirm
+    if [ "$(uname -m)" != arm64 ]; then
+      printf '%s\n' 'bootstrap: this fork targets Apple Silicon (arm64); refusing an unpinned installer on another architecture' >&2
+      return 1
+    fi
+    # Pin the audited Determinate installer release and verify its SHA-256
+    # before execution; never pipe an unverified download into a shell.
+    local installer="${TMPDIR:-/tmp}/nix-installer.$$.bin"
+    local installer_url='https://github.com/DeterminateSystems/nix-installer/releases/download/v3.22.4/nix-installer-aarch64-darwin'
+    local installer_sha256='5637169e5ae9ccd168842988d874efb721a8b4522053474cb46d80ae3a9727ad'
+    curl --proto '=https' --tlsv1.2 -sSfL "$installer_url" -o "$installer"
+    printf '%s  %s\n' "$installer_sha256" "$installer" | shasum -a 256 -c -
+    chmod 755 "$installer"
+    "$installer" install --no-confirm
+    rm -f "$installer"
     load_nix_profile
   fi
   check_command nix
@@ -64,26 +106,40 @@ ensure_nix() {
 }
 
 personalize_user() {
-  printf '%s\n' '==> Step 3: configured username'
-  # Do this before sudo: sudo can replace the interactive user's identity.
-  local real_user flake_user reply
-  real_user="$(id -un)"
-  flake_user="$(sed -nE 's/^[[:space:]]*user = "([^"]+)";.*/\1/p' "$DIR/flake.nix" | head -n1)"
-  if [ -z "$flake_user" ]; then
-    printf '%s\n' 'bootstrap: could not find the single user setting in flake.nix' >&2
-    return 1
-  elif [ "$flake_user" != "$real_user" ]; then
-    printf '    flake.nix uses user %s, but this account is %s.\n' "$flake_user" "$real_user"
-    read -r -p "    Rewrite flake.nix's user setting? [y/N] " reply
-    if [ "$reply" = y ] || [ "$reply" = Y ]; then
-      sed -i '' -E 's/^([[:space:]]*user = ")[^"]+(";.*)/\1'"$real_user"'\2/' "$DIR/flake.nix"
-    else
-      printf '%s\n' 'bootstrap: edit flake.nix and rerun bootstrap.sh' >&2
-      return 1
-    fi
+  printf '%s\n' '==> Step 3: derive current macOS identity'
+  # Keep machine identity out of Git: apply-darwin passes these values to the
+  # impure flake evaluation for this checkout.
+  DOTFILES_USER="$(id -un)"
+  export DOTFILES_USER
+  if command -v scutil >/dev/null 2>&1; then
+    DOTFILES_HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
   else
-    printf '    flake.nix already matches %s\n' "$real_user"
+    DOTFILES_HOST="$(hostname -s 2>/dev/null || printf '%s' mac)"
   fi
+  export DOTFILES_HOST
+  printf '    user=%s host=%s checkout=%s\n' "$DOTFILES_USER" "$DOTFILES_HOST" "$DIR"
+}
+
+choose_machine_role() {
+  local marker="${DOTFILES_MACHINE_MARKER:-$HOME/.config/dotfiles/machine-role}" role
+  export DOTFILES_MACHINE_MARKER="$marker"
+  if [ -f "$marker" ]; then
+    role=$(cat "$marker" 2>/dev/null || true)
+    case "$role" in own|other) export DOTFILES_MACHINE_ROLE="$role"; return 0 ;; esac
+  fi
+  if [ -t 0 ]; then
+    printf 'Is this your own Mac (zap undeclared Homebrew items)? [y/N] ' >&2
+    read -r role || return 1
+    case "$role" in y|Y|yes|YES) role=own ;; *) role=other ;; esac
+  else
+    role=other
+    printf '%s\n' 'bootstrap: no interactive owner decision; using protective Homebrew mode' >&2
+  fi
+  mkdir -p "$(dirname "$marker")"
+  printf '%s\n' "$role" >"$marker"
+  chmod 600 "$marker"
+  export DOTFILES_MACHINE_ROLE="$role"
+  printf '    machine role recorded outside Git: %s\n' "$role"
 }
 
 validate_locked_flake() {
@@ -154,15 +210,32 @@ ensure_ssh_identity() {
     gh ssh-key add "$public" --title "$title"
   fi
 
-  # StrictHostKeyChecking=ask keeps GitHub host verification interactive and
-  # never accepts an unverified host key. A successful GitHub SSH greeting
-  # exits 1 by design, so inspect its authenticated message rather than status.
+  # Fetch GitHub's published SSH host keys over authenticated HTTPS, pin them
+  # in known_hosts, and use strict checking. Never use ssh-keyscan or TOFU.
+  local meta="${TMPDIR:-/tmp}/bootstrap-github-meta.$$.json" known_hosts known_tmp host_keys
+  env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GH_HOST \
+    gh api meta >"$meta" || { rm -f "$meta"; return 1; }
+  host_keys=$(jq -r '.ssh_keys[]?' "$meta")
+  [ -n "$host_keys" ] || { rm -f "$meta"; printf '%s\n' 'bootstrap: GitHub API returned no SSH host keys' >&2; return 1; }
+  known_hosts="$ssh_dir/known_hosts"
+  known_tmp=$(mktemp "$known_hosts.tmp.XXXXXX") || { rm -f "$meta"; return 1; }
+  if [ -f "$known_hosts" ]; then cat "$known_hosts" >"$known_tmp"; fi
+  while IFS= read -r host_key; do
+    if ! grep -F -x "github.com $host_key" "$known_tmp" >/dev/null 2>&1; then
+      printf 'github.com %s\n' "$host_key" >>"$known_tmp"
+    fi
+  done <<EOF
+$host_keys
+EOF
+  chmod 600 "$known_tmp"
+  mv -f "$known_tmp" "$known_hosts"
+  rm -f "$meta"
   local ssh_probe="${TMPDIR:-/tmp}/bootstrap-github-ssh.$$.log"
-  ssh -o StrictHostKeyChecking=ask -T git@github.com >"$ssh_probe" 2>&1 || true
+  ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" -T git@github.com >"$ssh_probe" 2>&1 || true
   if ! grep -F 'successfully authenticated' "$ssh_probe" >/dev/null 2>&1; then
     cat "$ssh_probe" >&2
     rm -f "$ssh_probe"
-    printf '%s\n' 'bootstrap: GitHub SSH identity/host verification did not complete' >&2
+    printf '%s\n' 'bootstrap: GitHub SSH identity or pinned-host verification did not complete' >&2
     return 1
   fi
   rm -f "$ssh_probe"
@@ -258,14 +331,35 @@ ensure_firstmate() {
   DOTFILES_ROOT="$DIR" FIRSTMATE_HOME="$firstmate" "$DIR/home/bin/update-firstmate" --materialize-config
 }
 
+run_bootstrap_fixture() {
+  local state="${HOME}/.local/state/dotfiles/bootstrap-fixture.stages" stage
+  mkdir -p "$(dirname "$state")"
+  for stage in clt nix flake activation av oauth ssh hardening security firstmate config tools skills container doctor; do
+    grep -F -x "$stage" "$state" >/dev/null 2>&1 && continue
+    printf 'fixture stage: %s\n' "$stage"
+    if [ "${DOTFILES_FIXTURE_INTERRUPT_AT:-}" = "$stage" ]; then
+      return 75
+    fi
+    printf '%s\n' "$stage" >>"$state"
+  done
+}
+
+if [ "${DOTFILES_BOOTSTRAP_FIXTURE:-}" = 1 ]; then
+  run_bootstrap_fixture
+  exit $?
+fi
+if [ "$scratch_mode" = true ]; then
+  bootstrap_from_scratch
+fi
 ensure_apple_clt
 ensure_nix
 personalize_user
+choose_machine_role
 validate_locked_flake
 printf '%s\n' '==> Step 5: first darwin-rebuild switch (installs AV, SSH tools, and declared apps)'
 DOTFILES_ROOT="$DIR" "$DIR/home/bin/apply-darwin" --bootstrap
 bootstrap_user="$(id -un)"
-export PATH="$HOME/.local/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:/opt/homebrew/bin:/usr/local/bin:/etc/profiles/per-user/$bootstrap_user/bin:/run/current-system/sw/bin:$PATH"
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$bootstrap_user/bin:/usr/local/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin"
 verify_av
 github_oauth
 ensure_ssh_identity

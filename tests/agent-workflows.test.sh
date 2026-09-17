@@ -32,7 +32,7 @@ test_public_commands() {
   command -v jq >/dev/null 2>&1 || fail "jq is required to verify public command links"
   local actual expected
   actual=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
-    "$ROOT#darwinConfigurations.mac.config.home-manager.users.kunchen" \
+    "$ROOT#darwinConfigurations.mac.config.home-manager.users.nobody" \
     --apply '
       cfg:
       let names = builtins.attrNames cfg.home.file;
@@ -117,17 +117,24 @@ test_skills_and_topgrade_boundaries() {
   : >"$log"
   mkdir -p "$TMP_ROOT/home/.local/bin"
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/home/.local/bin/update-skills"
-  for command in npm no-mistakes treehouse skills update-firstmate; do
+  for command in npm no-mistakes treehouse skills update-firstmate pi; do
     fake_command "$command"
   done
   HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-skills" --seed >/dev/null || fail 'Skills source seeding failed'
-  output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
-    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
   assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --all --yes' 'Vision Skills source was not seeded'
   assert_file_contains "$log" 'skills add https://github.com/mitsuhiko/agent-stuff --global --all --yes' 'agent-stuff Skills source was not seeded'
-  assert_file_contains "$log" 'skills update --global --yes' 'global Skills registry was not updated'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/lavish-axi --global --all --yes' 'lavish-axi Skills source was not seeded'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/gnhf --global --all --yes' 'gnhf Skills source was not seeded'
+  assert_file_contains "$log" 'skills add https://github.com/jacobaraujo7/remote_pi --global --all --yes' 'remote-pi Skills source was not seeded'
+  : >"$log"
+  output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
+    DOTFILES_EXTRA_PATH="$FAKE" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
+  [ "$(grep -c '^skills update --global --yes$' "$log")" -eq 1 ] \
+    || fail 'global Skills registry update did not run exactly once for agent-stuff'
   assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
+  [ "$(grep -c '^pi update$' "$log")" -eq 1 ] || fail 'Pi native update did not run exactly once'
   assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
   assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
   : >"$log"
@@ -137,6 +144,30 @@ test_skills_and_topgrade_boundaries() {
   fi
   [ ! -s "$log" ] || fail 'targeted update unexpectedly ran full-update commands'
   pass 'Skills registry update and full-versus-targeted update boundaries'
+  test_backup_prune_transaction
+}
+
+test_backup_prune_transaction() {
+  local backup_dir="$TMP_ROOT/transaction-backups" output
+  mkdir -p "$backup_dir/old"
+  touch -t 202001010000 "$backup_dir/old"
+  cat >"$FAKE/update-firstmate" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' 'update-firstmate failed' >> "${WORKFLOW_LOG:?}"
+exit 1
+SCRIPT
+  chmod +x "$FAKE/update-firstmate"
+  set +e
+  output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$TMP_ROOT/failure.log" \
+    DOTFILES_EXTRA_PATH="$FAKE" PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
+    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+  local status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'failed full transaction unexpectedly succeeded'
+  [ -d "$backup_dir/old" ] || fail 'failed transaction pruned migration backups'
+  assert_contains "$output" 'retaining migration backups' 'failed transaction did not report retention'
+  fake_command update-firstmate
+  pass 'migration backups prune only after a fully successful transaction'
 }
 
 test_npm_prefix_fallback() {
@@ -147,13 +178,14 @@ test_npm_prefix_fallback() {
 printf '%s\n' "${NPM_CONFIG_PREFIX:?}" > "${NPM_PREFIX_LOG:?}"
 SCRIPT
   chmod +x "$FAKE/npm"
-  for command in no-mistakes treehouse skills update-firstmate; do
+  for command in no-mistakes treehouse skills update-firstmate pi; do
     fake_command "$command"
   done
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
   output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
     NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
-    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") \
+    DOTFILES_EXTRA_PATH="$FAKE" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-agent-tools") \
     || fail 'Nix npm prefix prevented the full update transaction'
   [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local/npm" ] \
     || fail 'full update retained a read-only Nix npm prefix'
@@ -181,7 +213,6 @@ test_firstmate_relations() {
   git -C "$src" push -q "$remote" "$branch"
   FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
     >"$TMP_ROOT/firstmate-behind.out" || fail 'behind Firstmate update failed'
-  [ "$(cat "$fm/file")" = two ] || fail 'behind checkout did not fast-forward'
   [ "$(cat "$fm/file")" = two ] || fail 'behind checkout did not fast-forward'
   [ "$(cat "$fm/config/backend")" = herdr ] || fail 'Firstmate backend was not materialized'
   [ "$(cat "$fm/config/backlog-backend")" = tasks-axi ] || fail 'Firstmate backlog backend was not materialized'
@@ -251,6 +282,8 @@ SCRIPT
 exec "$@"
 SCRIPT
   chmod +x "$FAKE/nix" "$FAKE/sudo"
+  chmod +x "$FAKE/nix" "$FAKE/sudo"
+  rm -f "$FAKE/darwin-rebuild"
   mkdir -p "$doctor_home/firstmate/config"
   git -C "$doctor_home/firstmate" init -q
   cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$doctor_home/firstmate/config/crew-dispatch.json"

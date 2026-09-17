@@ -7,6 +7,8 @@ set -euo pipefail
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+test_managed_paths() {
+
 command -v jq >/dev/null 2>&1 || fail "jq is required for managed-paths fixture"
 TMP_ROOT=$(dotfiles_test_tmproot managed-paths)
 REPO="$TMP_ROOT/repo"
@@ -110,7 +112,7 @@ backup_roots_after=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager
 
 command -v nix >/dev/null 2>&1 || fail "nix is required to verify activation ordering"
 activation_order=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
-  "$ROOT#darwinConfigurations.mac.config.home-manager.users.kunchen" \
+  "$ROOT#darwinConfigurations.mac.config.home-manager.users.nobody" \
   --apply '
     cfg:
     let
@@ -139,3 +141,6 @@ DOTFILES_BACKUP_BASE="$backup_retention" DOTFILES_BACKUP_RETENTION_DAYS=15 \
 [ ! -e "$backup_retention/old" ] || fail "15-day backup retention kept an old snapshot"
 [ -d "$backup_retention/new" ] || fail "backup pruning removed a fresh snapshot"
 pass "managed paths preserve local resources, settings hooks, backups, and retention"
+}
+
+test_managed_paths

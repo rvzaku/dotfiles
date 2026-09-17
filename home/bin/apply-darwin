@@ -17,6 +17,20 @@ resolve_script_root() {
   done
   cd "$(dirname "$script_path")/../.." && pwd -P
 }
+
+resolve_host() {
+  local host
+  if [ -n "${DOTFILES_HOST:-}" ]; then
+    printf '%s\n' "$DOTFILES_HOST"
+    return 0
+  fi
+  if command -v scutil >/dev/null 2>&1 && host=$(scutil --get LocalHostName 2>/dev/null); then
+    printf '%s\n' "$host"
+  else
+    hostname -s 2>/dev/null || printf '%s\n' mac
+  fi
+}
+
 resolve_root() {
   local candidate
   if [ -n "${DOTFILES_ROOT:-}" ]; then
@@ -50,24 +64,49 @@ warn_homebrew_inventory() {
   printf '  taps: %s\n' "$(brew tap 2>/dev/null | tr '\n' ' ')" >&2
 }
 
-
 warn_homebrew_cleanup() {
   cat >&2 <<'WARNING'
-dotfiles: WARNING - nix-darwin declares Homebrew cleanup=zap.
-dotfiles: Any Homebrew formula or cask not listed in configuration.nix may be removed.
-dotfiles: Review the inventory before continuing; set DOTFILES_ASSUME_HOMEBREW_ZAP=1 to acknowledge non-interactively.
+dotfiles: WARNING - this switch may remove Homebrew items not declared in configuration.nix.
+dotfiles: The exact formulae, casks, and taps above are the inventory exposed before activation.
 WARNING
-  if [ -t 0 ] && [ "${DOTFILES_ASSUME_HOMEBREW_ZAP:-}" != 1 ]; then
-    printf 'dotfiles: continue with Homebrew zap cleanup? [y/N] ' >&2
+  if [ "${DOTFILES_MACHINE_ROLE:-other}" = own ]; then
+    if [ -t 0 ] && [ "${DOTFILES_ASSUME_HOMEBREW_ZAP:-}" != 1 ]; then
+      printf 'dotfiles: continue with Homebrew zap cleanup on the declared own Mac? [y/N] ' >&2
+      read -r answer || return 1
+      case "$answer" in
+        y|Y|yes|YES) ;;
+        *) printf 'dotfiles: switch cancelled before Homebrew cleanup\n' >&2; return 1 ;;
+      esac
+    fi
+  elif [ "${DOTFILES_ASSUME_HOMEBREW_ZAP:-}" = 1 ]; then
+    printf '%s\n' 'dotfiles: owner explicitly acknowledged zap on a protective machine' >&2
+  elif [ -t 0 ]; then
+    printf 'dotfiles: remove undeclared Homebrew items on this non-own Mac? [y/N] ' >&2
     read -r answer || return 1
     case "$answer" in
       y|Y|yes|YES) ;;
-      *) printf 'dotfiles: switch cancelled before Homebrew cleanup\n' >&2; return 1 ;;
+      *) printf '%s\n' 'dotfiles: owner declined zap; stopping before activation (nothing was removed or half-applied)' >&2; return 1 ;;
     esac
+  else
+    printf '%s\n' 'dotfiles: protective machine has no owner confirmation; refusing zap-capable activation' >&2
+    return 1
   fi
 }
 
 ROOT=$(resolve_root) || exit 1
+DOTFILES_USER="${DOTFILES_USER:-$(id -un)}"
+DOTFILES_HOST="${DOTFILES_HOST:-$(resolve_host)}"
+machine_marker="${DOTFILES_MACHINE_MARKER:-$HOME/.config/dotfiles/machine-role}"
+if [ -z "${DOTFILES_MACHINE_ROLE:-}" ] && [ -f "$machine_marker" ]; then
+  DOTFILES_MACHINE_ROLE=$(cat "$machine_marker" 2>/dev/null || true)
+fi
+if [ -z "${DOTFILES_MACHINE_ROLE:-}" ]; then
+  DOTFILES_MACHINE_ROLE=other
+fi
+case "$DOTFILES_MACHINE_ROLE" in
+  own|other) export DOTFILES_MACHINE_ROLE ;;
+  *) DOTFILES_MACHINE_ROLE=other; export DOTFILES_MACHINE_ROLE ;;
+esac
 legacy_alias="$HOME/.dotfiles"
 if [ -L "$legacy_alias" ]; then
   legacy_target=$(cd "$legacy_alias" 2>/dev/null && pwd -P || true)
@@ -119,16 +158,16 @@ trap cleanup EXIT
 NIX_BIN=$(command -v nix)
 set +e
 if [ "$mode" = --bootstrap ]; then
-  sudo env "DOTFILES_ROOT=$ROOT" "HOME=$HOME" "$NIX_BIN" run \
+  sudo env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOST=$DOTFILES_HOST" "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" "HOME=$HOME" "$NIX_BIN" run \
     github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
-    switch --impure --flake "$ROOT#mac"
+    switch --impure --flake "$ROOT#$DOTFILES_HOST"
 else
   if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "DOTFILES_ROOT=$ROOT" "HOME=$HOME" darwin-rebuild switch --impure --flake "$ROOT#mac"
+    sudo env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOST=$DOTFILES_HOST" "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" "HOME=$HOME" darwin-rebuild switch --impure --flake "$ROOT#$DOTFILES_HOST"
   else
-    sudo env "DOTFILES_ROOT=$ROOT" "HOME=$HOME" "$NIX_BIN" run \
+    sudo env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOST=$DOTFILES_HOST" "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" "HOME=$HOME" "$NIX_BIN" run \
       github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
-      switch --impure --flake "$ROOT#mac"
+      switch --impure --flake "$ROOT#$DOTFILES_HOST"
   fi
 fi
 status=$?

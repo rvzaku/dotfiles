@@ -61,11 +61,19 @@ reviewable, and requirement-backed.
   surfaces, and every globally registered Skill exactly once, verifies AV and
   doctor state, and prunes eligible backups only after success. Targeted forms
   (`--dry-run`, `--only`) remain targeted. No update helper auto-commits or
-  pushes.
+  pushes. Homebrew zap is always declared. Bootstrap records an outside-Git
+  `~/.config/dotfiles/machine-role` marker; protective machines print the exact
+  inventory and require owner confirmation, stopping cleanly if declined.
+  Helpers and agents must not run `git reset --hard`,
+  `git clean -fdx`, `git push --force`, destructive branch deletion, or
+  stash-and-forget flows; preserve dirty work and ask before irreversible
+  recovery.
 - Prefer `pi-signed`, then healthy plain `pi`, otherwise report degraded Pi
   capability without blocking unrelated setup. Keep Pi settings/packages,
   extensions, models, and themes additive; runtime auth/session/cache state is
-  unmanaged.
+  unmanaged. `home/.pi/agent/settings.json` keeps Pi package specs unpinned so
+  the full-update transaction can run Pi's native `pi update`; any resulting
+  authored settings diff remains reviewable and is never auto-committed.
 - Important security/bootstrap/ownership/production landings use the
   No Mistakes pipeline with yolo enabled; small deterministic changes may use
   the fast path. Human authority remains required for destructive recovery,

@@ -10,9 +10,12 @@ skill_sources=(
   https://github.com/kunchenguid/no-mistakes
   # Treehouse publishes a binary, not a Skills package; update-agent-tools owns it.
   https://github.com/kunchenguid/axi
+  https://github.com/kunchenguid/lavish-axi
+  https://github.com/kunchenguid/gnhf
   https://github.com/mattpocock/skills
   https://github.com/mitsuhiko/agent-stuff
   https://github.com/pbakaus/impeccable
+  https://github.com/jacobaraujo7/remote_pi
 )
 
 seed_sources() {

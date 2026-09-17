@@ -322,14 +322,23 @@ in
   ];
 
   fonts.fontconfig.enable = true;
+  # Keep trusted system/package-manager directories ahead of writable user
+  # bins. This resolves AV PATH-order findings without losing any tools.
   home.sessionPath = [
-    "$HOME/.local/bin"
+    "/usr/bin"
+    "/bin"
+    "/usr/sbin"
+    "/sbin"
+    "/opt/homebrew/bin"
+    "/opt/homebrew/sbin"
+    "/run/current-system/sw/bin"
+    "/nix/var/nix/profiles/default/bin"
+    "/etc/profiles/per-user/$USER/bin"
+    "/usr/local/bin"
     "$HOME/.local/npm/bin"
     "$HOME/firstmate/bin"
+    "$HOME/.local/bin"
     "$HOME/.local/share/pnpm/bin"
-    # pnpm's global bin directory must be on PATH for Topgrade's package
-    # manager stage; keep it under the writable per-user Home Manager area.
-    # npm's declared prefix is ~/.local/npm; never write to the Nix store.
   ];
   home.sessionVariables = {
     EDITOR = "nvim";
@@ -392,13 +401,20 @@ in
     };
   };
 
+  programs.git = {
+    enable = true;
+    # Disable ambient credential helpers; GitHub uses the pinned SSH identity
+    # and Automic Vault remains the only secret authority.
+    settings.credential.helper = "";
+  };
+
   programs.zsh = {
     enable = true;
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
     initContent = ''
       bindkey '^f' autosuggest-accept
-      export PATH="$HOME/.local/bin:$HOME/firstmate/bin:$PATH"
+      export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:$PATH"
     '';
     shellAliases = {
       ".." = "cd ..";

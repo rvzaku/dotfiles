@@ -149,7 +149,7 @@ test_static_typescript_and_repo_wiring() {
   # linking behavior.
   command -v nix >/dev/null 2>&1 || fail "nix is required to verify Home Manager file wiring"
   home_manager_wiring=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
-    "$ROOT#darwinConfigurations.mac.config.home-manager.users.kunchen" \
+    "$ROOT#darwinConfigurations.mac.config.home-manager.users.nobody" \
     --apply '
       cfg: {
         wholeDirectoryLinked = cfg.home.file ? ".pi/agent/extensions";
