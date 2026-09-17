@@ -65,8 +65,21 @@ bootstrap_from_scratch() {
   check_command git
   local target="${HOME}/dotfiles" repo_url="${DOTFILES_REPO_URL:-https://github.com/rvzaku/dotfiles.git}"
   if [ -e "$target" ]; then
-    printf 'bootstrap: refusing to replace existing %s; choose an empty target and rerun\n' "$target" >&2
-    return 1
+    local existing_origin existing_root
+    existing_root=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)
+    if [ ! -d "$target" ] \
+      || [ "$existing_root" != "$(cd "$target" && pwd -P)" ] \
+      || [ ! -f "$target/bootstrap.sh" ]; then
+      printf 'bootstrap: existing %s is not a valid checkout for resumption; refusing to replace it\n' "$target" >&2
+      return 1
+    fi
+    existing_origin=$(git -C "$target" config --get remote.origin.url 2>/dev/null || true)
+    if [ "$existing_origin" != "$repo_url" ]; then
+      printf 'bootstrap: existing %s has unexpected origin; refusing to replace it\n' "$target" >&2
+      return 1
+    fi
+    printf '    preserving existing dotfiles checkout at %s and resuming\n' "$target"
+    exec env DOTFILES_BOOTSTRAP_REENTRY=1 "$target/bootstrap.sh"
   fi
   if [ -n "${DOTFILES_REF:-}" ]; then
     git clone --branch "$DOTFILES_REF" --single-branch "$repo_url" "$target"

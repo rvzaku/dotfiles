@@ -24,6 +24,31 @@ test_portable_identity_fixture() {
   pass 'portable user/hostname fixture resolves a different machine identity'
 }
 
+test_bootstrap_scratch_resume() {
+  local source="$fixture_root/scratch-source" home="$fixture_root/scratch-home" output
+  mkdir -p "$source" "$home" "$fixture_root/bin"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf scratch-resumed' >"$source/bootstrap.sh"
+  chmod 755 "$source/bootstrap.sh"
+  git -C "$source" init -q
+  git -C "$source" config user.email fixture@example.com
+  git -C "$source" config user.name fixture
+  git -C "$source" add bootstrap.sh
+  git -C "$source" commit -qm fixture
+  stub_command uname 'printf Darwin'
+  stub_command xcrun '[ "${1:-}" = --find ] && exit 0; exit 1'
+  output=$(HOME="$home" PATH="$fixture_root/bin:/usr/bin:/bin" \
+    DOTFILES_REPO_URL="file://$source" "$ROOT/bootstrap.sh" --from-scratch 2>&1) \
+    || fail 'from-scratch bootstrap did not clone the fixture checkout'
+  assert_contains "$output" scratch-resumed 'fresh checkout did not enter bootstrap'
+  touch "$home/dotfiles/local-work"
+  output=$(HOME="$home" PATH="$fixture_root/bin:/usr/bin:/bin" \
+    DOTFILES_REPO_URL="file://$source" "$ROOT/bootstrap.sh" --from-scratch 2>&1) \
+    || fail 'from-scratch bootstrap did not resume the fixture checkout'
+  assert_contains "$output" 'preserving existing dotfiles checkout' 'existing checkout was not resumed'
+  [ -f "$home/dotfiles/local-work" ] || fail 'resumption replaced local work'
+  pass 'from-scratch bootstrap resumes a valid checkout without replacement'
+}
+
 # First run, rerun, and interruption recovery use bootstrap's harmless stage
 # fixture; no real installer or credential command is invoked.
 test_bootstrap_first_run_rerun_interruption() {
@@ -202,6 +227,7 @@ test_quota_dispatch_integration() {
 test_portable_identity_fixture
 test_firstmate_config_no_pi_fixture
 test_path_order_fixture
+test_bootstrap_scratch_resume
 test_bootstrap_first_run_rerun_interruption
 test_brew_zap_inventory_fixture
 test_agent_health_fixture
