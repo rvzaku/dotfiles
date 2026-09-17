@@ -62,6 +62,19 @@ load_nix_profile() {
   fi
 }
 
+# Normalize Homebrew's tap-qualified declarations and inventories to the
+# installed short name (brew list --{formula,cask} reports short names).
+normalize_homebrew_names() {
+  local name
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    case "$name" in
+      */*) name=${name##*/} ;;
+    esac
+    printf '%s\n' "$name"
+  done
+}
+
 warn_homebrew_inventory() {
   if ! command -v brew >/dev/null 2>&1; then
     printf '%s\n' 'dotfiles: exact Homebrew inventory before zap: formulae: none; casks: none; taps: none; nothing will be removed.' >&2
@@ -72,16 +85,18 @@ warn_homebrew_inventory() {
     return 1
   fi
   local config_ref="${ROOT}#darwinConfigurations.${DOTFILES_HOST}.config.homebrew" item
-  local declared_formulae declared_casks declared_taps formulae casks taps
+  local declared_formulae declared_casks declared_taps formulae casks taps declared_raw
   local names_expr='xs: builtins.concatStringsSep "\n" (map (x: if builtins.isAttrs x then (x.name or (throw "Homebrew entry has no name")) else x) xs)'
-  declared_formulae=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.brews" 2>/dev/null) || {
+  declared_raw=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.brews" 2>/dev/null) || {
     printf 'dotfiles: could not evaluate declared Homebrew formulae for the exact zap inventory\n' >&2
     return 1
   }
-  declared_casks=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.casks" 2>/dev/null) || {
+  declared_formulae=$(printf '%s\n' "$declared_raw" | normalize_homebrew_names)
+  declared_raw=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.casks" 2>/dev/null) || {
     printf 'dotfiles: could not evaluate declared Homebrew casks for the exact zap inventory\n' >&2
     return 1
   }
+  declared_casks=$(printf '%s\n' "$declared_raw" | normalize_homebrew_names)
   declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.taps" 2>/dev/null) || {
     printf 'dotfiles: could not evaluate declared Homebrew taps for the exact zap inventory\n' >&2
     return 1
@@ -95,12 +110,12 @@ warn_homebrew_inventory() {
   printf '  taps: %s\n' "$(printf '%s\n' "$taps" | tr '\n' ' ')" >&2
   printf '  formulae to remove: ' >&2
   for item in $formulae; do
-    grep -Fxq "$item" <<<"$declared_formulae" || printf '%s ' "$item" >&2
+    grep -Fxq "${item##*/}" <<<"$declared_formulae" || printf '%s ' "$item" >&2
   done
   printf '\n' >&2
   printf '  casks to remove: ' >&2
   for item in $casks; do
-    grep -Fxq "$item" <<<"$declared_casks" || printf '%s ' "$item" >&2
+    grep -Fxq "${item##*/}" <<<"$declared_casks" || printf '%s ' "$item" >&2
   done
   printf '\n  taps to remove: ' >&2
   for item in $taps; do

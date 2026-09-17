@@ -74,12 +74,14 @@ test_bootstrap_first_run_rerun_interruption() {
 test_brew_zap_inventory_fixture() {
   mkdir -p "$fixture_root/bin"
   # shellcheck disable=SC2016
-  stub_command brew 'case "$1" in list) [ "$2" = --formula ] && printf "undeclared-formula\\n" || printf "undeclared-cask\\n";; tap) printf "third-party/tap\\n";; esac'
-  stub_command nix 'exit 0'
+  stub_command brew 'case "$1" in list) [ "$2" = --formula ] && printf "undeclared-formula\n" || printf "pi-launcher\nundeclared-cask\n";; tap) printf "third-party/tap\n";; esac'
+  # The declaration is tap-qualified while brew list --cask returns the
+  # installed short name. The inventory must not propose removing pi-launcher.
+  stub_command nix 'case "$*" in *.brews) printf "herdr\n";; *.casks) printf "kunchenguid/tap/pi-launcher\n";; *.taps) printf "kunchenguid/tap\n";; esac'
   stub_command darwin-rebuild 'exit 0'
   # shellcheck disable=SC2016
   stub_command sudo 'shift; while [ "$1" != "" ] && [ "${1#*=}" != "$1" ]; do shift; done; exec "$@"'
-  local output status
+  local output status cask_removals
   mkdir -p "$fixture_root/home/.config/dotfiles"
   printf '%s\n' other >"$fixture_root/home/.config/dotfiles/machine-role"
   set +e
@@ -95,6 +97,10 @@ test_brew_zap_inventory_fixture() {
   assert_contains "$output" 'undeclared-formula' 'zap warning omitted formula inventory'
   assert_contains "$output" 'undeclared-cask' 'zap warning omitted cask inventory'
   assert_contains "$output" 'third-party/tap' 'zap warning omitted tap inventory'
+  cask_removals=$(printf '%s\n' "$output" | sed -n 's/^  casks to remove: //p')
+  case " $cask_removals " in
+    *' pi-launcher '*) fail 'tap-qualified cask was incorrectly marked for removal' ;;
+  esac
   pass 'Brew zap inventory fixture warns before a stubbed switch'
   printf '%s\n' own >"$fixture_root/home/.config/dotfiles/machine-role"
   PATH="$fixture_root/bin:/usr/bin:/bin" DOTFILES_ROOT="$ROOT" HOME="$fixture_root/home" \
