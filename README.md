@@ -227,15 +227,25 @@ When enabled, Calm hides collapsed thinking and the call/result shells for Pi's 
 
 Calm never changes prompts, tool execution, model context, session data, or ordering. `/share` and `/export` use the complete stock transcript. Generic custom tools, images, and unsupported Pi transcript classes deliberately remain visible because Pi has no safe general-purpose transcript filter. If a future Pi release no longer exports the exact collapsed-thinking rendering seam, Calm logs one diagnostic and leaves only that adapter disabled; all other behavior remains available.
 
-Pi's package system declares three third-party sources in the linked global `settings.json`:
+Pi's package system declares four third-party sources in the linked global `settings.json`:
 
 - `npm:pi-web-access@0.14.0` - the exact public npm release for web access.
 - `npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6` - the exact public npm release from `ryan_nookpi`.
 - `npm:remote-pi@0.7.0` - the pinned Remote Pi extension and agent-network package.
+- `npm:mitsupi@1.6.0` - the pinned `mitsuhiko/agent-stuff` Pi package (extensions,
+  commands, themes, and skills).
 
 The versions are immutable pins, so Pi does not move them during package updates. Deliberate updates require a new source and security audit, followed by an explicit pin change in `home/.pi/agent/settings.json`. On Pi 0.82.0, global settings declarations install missing pinned packages automatically at startup. No one-time install command is required. Pi keeps the downloaded npm package trees in its own unmanaged `~/.pi/agent/npm` runtime directory, outside Home Manager and Git tracking.
 
-Both packages execute with your full user permissions and must be trusted like any other executable code.
+All packages execute with your full user permissions and must be trusted like any other executable code.
+
+Global Skills are seeded and updated through the `skills` registry client, not
+by Home Manager copying upstream trees. `home/bin/update-skills --seed` installs
+the Firstmate, Vision (`kunchenguid/vision`), AXI, Matt Pocock, agent-stuff,
+Impeccable, and No Mistakes sources globally, then updates every registered
+skill. The writable local exception is Backpass's user-scope overflow source;
+credentials, trust, sessions, caches, and registry metadata remain runtime
+state outside Git.
 
 Home Manager deliberately does not manage `~/.pi/agent` itself, or Pi authentication, sessions, trust decisions, caches, npm/git package trees, or any other runtime state. The model overrides contain no credentials or endpoint settings, do not choose a default model, and only take effect after you authenticate Pi yourself. This remains an additive post-video layer: it does not install Pi, a launcher, or package source code into this repository.
 
@@ -254,15 +264,15 @@ Neovim keeps italics off and uses a transparent background on macOS, Windows, an
 | Homebrew inventory, Automic Vault, and zap warning | `configuration.nix`, `home/bin/apply-darwin`, `home/bin/dot-doctor` | Homebrew's own database and AV's local authority store |
 | Agent npm tools and Skills updates | `home.nix`, `home/bin/update-agent-tools`, `home/bin/update-skills` | npm prefix and global Skills registry under `$HOME` |
 | Firstmate and Herdr | `bootstrap.sh`, `home/bin/update-firstmate`, `home/.config/herdr` | `$FIRSTMATE_HOME` and Herdr runtime state |
-| Agent resources and vendor Skills | `home/`, `home/.agents/skills` | Auth, sessions, caches, and package trees stay outside Git |
+| Agent resources and Skills registry | `home/`, `home/bin/update-skills` | Upstream Skills are registry-owned; Backpass is the only writable local source; auth, sessions, caches, and package trees stay outside Git |
 | Collision adoption and migrations | `home/bin/prepare-managed-paths` | `$XDG_STATE_HOME/dotfiles/backups/home-manager` |
 
 This is a minimal fork of Kun's current architecture. The intentional delta is
 portable checkout-root injection for arbitrary worktrees, additive collision
 adoption with byte-preserving backups, Pi signed-launcher preference and
 fallback, Automic Vault security checks, explicit container packages, read-only `dot-doctor`, and
-safe full-update helpers. Existing agent resources remain vendor-owned unless
-the table above names this checkout as their owner.
+safe full-update helpers. Existing agent resources remain registry/package-owned
+unless the table above names this checkout as their owner.
 
 ## License
 

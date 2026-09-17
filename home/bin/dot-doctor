@@ -45,6 +45,40 @@ pass_check() { printf 'dot-doctor: PASS - %s\n' "$1"; }
 fail_check() { printf 'dot-doctor: FAIL - %s\n' "$1" >&2; problems=$((problems + 1)); }
 degraded_check() { printf 'dot-doctor: DEGRADED - %s\n' "$1" >&2; degraded=$((degraded + 1)); }
 
+find_pi_signed() {
+  local candidate
+  if [ "${PI_SIGNED_BIN+x}" = x ]; then
+    if [ -x "$PI_SIGNED_BIN" ] && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
+      printf '%s\n' "$PI_SIGNED_BIN"
+      return 0
+    fi
+    return 1
+  fi
+  candidate=$(command -v pi-signed 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/pi-signed /usr/local/bin/pi-signed; do
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+}
+
+find_pi_plain() {
+  local candidate
+  candidate=$(command -v pi 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
+    [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+}
+
 if [ -f "$ROOT/flake.lock" ]; then
   pass_check 'flake.lock is present'
 else
@@ -68,6 +102,71 @@ else
   pass_check 'no legacy hidden dotfiles alias exists'
 fi
 
+firstmate_home="${FIRSTMATE_HOME:-$HOME/firstmate}"
+firstmate_config="$firstmate_home/config"
+if [ -e "$firstmate_home/.git" ]; then
+  expected_harness='pi'
+  if find_pi_signed >/dev/null 2>&1; then expected_harness='pi-signed'; fi
+  check_firstmate_leaf() {
+    local name=$1 expected=$2 actual
+    if [ ! -f "$firstmate_config/$name" ] || [ -L "$firstmate_config/$name" ]; then
+      fail_check "Firstmate config/$name is missing"
+      return
+    fi
+    actual=$(cat "$firstmate_config/$name" 2>/dev/null || true)
+    if [ "$actual" = "$expected" ]; then
+      pass_check "Firstmate config/$name is $expected"
+    else
+      fail_check "Firstmate config/$name differs (expected $expected)"
+    fi
+  }
+  check_firstmate_leaf backend herdr
+  check_firstmate_leaf crew-harness "$expected_harness"
+  check_firstmate_leaf backlog-backend tasks-axi
+  if [ -f "$firstmate_config/crew-dispatch.json" ] && [ ! -L "$firstmate_config/crew-dispatch.json" ] && cmp -s "$ROOT/home/.config/firstmate/crew-dispatch.json" "$firstmate_config/crew-dispatch.json"; then
+    pass_check 'Firstmate crew-dispatch.json matches authored configuration'
+  else
+    fail_check 'Firstmate crew-dispatch.json is missing or differs from authored configuration'
+  fi
+else
+  fail_check "Firstmate checkout is missing at $firstmate_home"
+fi
+
+if command -v skills >/dev/null 2>&1; then
+  skills_json=$(mktemp "${TMPDIR:-/tmp}/dotfiles-skills.XXXXXX")
+  if skills list -g --json >"$skills_json" 2>/dev/null && command -v jq >/dev/null 2>&1; then
+    local_skill_names=$(jq -r '.[]? | select(.name != "backpass" and (.source == null or .sourceType == "local")) | .name' "$skills_json" 2>/dev/null || printf '__parse_error__')
+    if [ "$local_skill_names" = '__parse_error__' ]; then
+      fail_check 'global Skills registry output could not be parsed'
+    elif [ -n "$local_skill_names" ]; then
+      fail_check "global Skills registry has local/unidentified sources: $(printf '%s' "$local_skill_names" | tr '\n' ' ')"
+    elif [ -n "$local_skill_names" ]; then
+      fail_check "global Skills registry has local/unidentified sources: $(printf '%s' "$local_skill_names" | tr '\n' ' ')"
+    else
+      required_skill_sources=(
+        kunchenguid/firstmate kunchenguid/vision kunchenguid/no-mistakes
+        kunchenguid/axi mattpocock/skills mitsuhiko/agent-stuff pbakaus/impeccable
+      )
+      missing_skill_sources=()
+      for source in "${required_skill_sources[@]}"; do
+        if ! jq -e --arg source "$source" 'any(.[]?; .source == $source)' "$skills_json" >/dev/null 2>&1; then
+          missing_skill_sources+=("$source")
+        fi
+      done
+      if ((${#missing_skill_sources[@]} > 0)); then
+        fail_check "global Skills registry is missing sources: ${missing_skill_sources[*]}"
+      else
+        pass_check 'global Skills registry reports required upstream sources'
+      fi
+    fi
+  else
+    fail_check 'global Skills registry could not be queried'
+  fi
+  rm -f "$skills_json"
+else
+  degraded_check 'Skills client is unavailable; global source identity is unproven'
+fi
+
 tracked_runtime=$(git -C "$ROOT" ls-files | grep -E '(^|/)(auth|trust|sessions?|state|npm)/|(^|/)(auth|trust)\.json$' || true)
 if [ -z "$tracked_runtime" ]; then
   pass_check 'runtime, authentication, and session paths are not tracked'
@@ -82,9 +181,9 @@ for tool in git nix; do
     degraded_check "$tool is unavailable"
   fi
 done
-if command -v pi-signed >/dev/null 2>&1; then
+if find_pi_signed >/dev/null 2>&1; then
   pass_check 'pi-signed is available (preferred Pi backend)'
-elif command -v pi >/dev/null 2>&1; then
+elif find_pi_plain >/dev/null 2>&1; then
   degraded_check 'pi-signed is unavailable; using unsigned pi fallback'
 else
   degraded_check 'Pi is unavailable; Pi-dependent workflows are unproven'
@@ -111,7 +210,7 @@ else
   degraded_check 'Automic Vault CLI is unavailable; managed security status is unproven'
 fi
 
-for tool in herdr topgrade treehouse no-mistakes container; do
+for tool in herdr topgrade treehouse no-mistakes skills container ssh; do
   if command -v "$tool" >/dev/null 2>&1; then
     pass_check "$tool is available"
   else

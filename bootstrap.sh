@@ -30,7 +30,7 @@ fi
 
 printf '%s\n' '==> Step 2: make Firstmate available'
 FIRSTMATE_DIR="${FIRSTMATE_HOME:-$HOME/firstmate}"
-if [ -d "$FIRSTMATE_DIR/.git" ]; then
+if [ -e "$FIRSTMATE_DIR/.git" ]; then
   printf '    preserving existing Firstmate checkout at %s\n' "$FIRSTMATE_DIR"
 elif [ -e "$FIRSTMATE_DIR" ]; then
   printf '    %s exists but is not a Git checkout; refusing to replace it\n' "$FIRSTMATE_DIR" >&2
@@ -38,6 +38,7 @@ elif [ -e "$FIRSTMATE_DIR" ]; then
 else
   git clone https://github.com/kunchenguid/firstmate.git "$FIRSTMATE_DIR"
 fi
+DOTFILES_ROOT="$DIR" FIRSTMATE_HOME="$FIRSTMATE_DIR" "$DIR/home/bin/update-firstmate" --materialize-config
 
 printf '%s\n' '==> Step 3: personalize the configured username'
 # Do this before sudo: sudo can replace the interactive user's identity.
@@ -67,4 +68,5 @@ DOTFILES_ROOT="$DIR" "$DIR/home/bin/apply-darwin" --bootstrap
 printf '%s\n' '==> Step 5: verify global agent tools'
 export PATH="$HOME/.local/bin:$HOME/firstmate/bin:/etc/profiles/per-user/$REAL_USER/bin:/run/current-system/sw/bin:$PATH"
 "$DIR/home/bin/ensure-agent-tools" --install
+"$DIR/home/bin/update-skills" --seed
 printf '%s\n' '==> Done. Use ./rebuild.sh for later changes.'

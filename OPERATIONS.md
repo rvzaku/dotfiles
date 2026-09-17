@@ -36,9 +36,10 @@ It never uses Home Manager's force escape hatch.
 No-argument `topgrade` is the complete update transaction: Topgrade's normal
 Nix/Homebrew/system stages run, followed by `update-agent-tools`, which updates
 mutable npm tools, no-mistakes, Treehouse, all globally registered Skills, and
-Firstmate. Migration backups are pruned only after every stage owned by that
-transaction succeeds. `topgrade --only <target>` remains targeted and does not
-become a full transaction.
+Firstmate. The helper retains migration snapshots unless the operator sets
+`DOTFILES_FULL_TRANSACTION_SUCCESS=1` after independently confirming that the
+entire transaction succeeded; only then can its prune step run. `topgrade
+--only <target>` remains targeted and does not become a full transaction.
 
 Firstmate is fetched directly from `https://github.com/kunchenguid/firstmate.git`
 on every full update. Dirty, ahead, detached, or diverged local work is
@@ -48,6 +49,15 @@ Pi uses `pi-signed` when present, falls back to `pi`, and reports a degraded
 state without blocking unrelated bootstrap work when neither is available.
 The Pi launcher, credentials, trust data, sessions, caches, and downloaded
 packages are not managed by Nix or Git.
+
+The macOS SSH client is system-owned. `dot-doctor` checks that `ssh` is
+available, but never reads, creates, or changes keys, agents, or credentials.
+
+Bootstrap and rebuild materialize Firstmate's `config/backend`,
+`config/crew-harness`, `config/backlog-backend`, and authored
+`config/crew-dispatch.json` atomically and idempotently. Existing differing
+files are moved to the Firstmate state backup directory before replacement;
+runtime config remains outside Git.
 
 ## Validation and recovery
 

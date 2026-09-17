@@ -106,16 +106,16 @@ let
       target = ".config/opencode";
     }
     {
-      source = ".agents/skills";
-      target = ".agents/skills";
+      source = ".agents/skills/backpass";
+      target = ".agents/skills/backpass";
     }
     {
-      source = ".agents/skills";
-      target = ".claude/skills";
+      source = ".agents/skills/backpass";
+      target = ".claude/skills/backpass";
     }
     {
-      source = ".agents/skills";
-      target = ".codex/skills";
+      source = ".agents/skills/backpass";
+      target = ".codex/skills/backpass";
     }
     {
       source = ".pi/agent/themes";
@@ -162,10 +162,6 @@ let
     {
       source = ".config/backpass/config.json";
       target = ".config/backpass/config.json";
-    }
-    {
-      source = ".config/firstmate/crew-dispatch.json";
-      target = "firstmate/config/crew-dispatch.json";
     }
     {
       source = ".claude/settings.json";

@@ -73,13 +73,13 @@ SCRIPT
 printf 'plain %s\n' "$*" >> "$PI_TEST_LOG"
 SCRIPT
   chmod +x "$FAKE/pi-signed" "$FAKE/pi"
-  PI_TEST_LOG="$log" PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" hello
+  PI_TEST_LOG="$log" PI_SIGNED_BIN="$FAKE/pi-signed" PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" hello
   assert_file_contains "$log" 'signed --approve hello' 'signed Pi was not preferred'
   rm "$FAKE/pi-signed"
-  PI_TEST_LOG="$log" PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" fallback
+  PI_TEST_LOG="$log" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" fallback
   assert_file_contains "$log" 'plain --approve fallback' 'plain Pi fallback was not used'
   rm "$FAKE/pi"
-  PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" degraded
+  PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" degraded
   pass 'Pi prefers pi-signed, falls back to pi, and degrades without either'
 }
 
@@ -120,9 +120,11 @@ test_skills_and_topgrade_boundaries() {
   done
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --all --yes' 'Vision Skills source was not seeded'
+  assert_file_contains "$log" 'skills add https://github.com/mitsuhiko/agent-stuff --global --all --yes' 'agent-stuff Skills source was not seeded'
   assert_file_contains "$log" 'skills update --global --yes' 'global Skills registry was not updated'
   assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
-  assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
+  assert_contains "$output" 'retaining migration snapshots' 'update did not retain backups without a proven full transaction'
   assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
   : >"$log"
   if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
@@ -227,6 +229,12 @@ SCRIPT
 exec "$@"
 SCRIPT
   chmod +x "$FAKE/nix" "$FAKE/sudo"
+  mkdir -p "$doctor_home/firstmate/config"
+  git -C "$doctor_home/firstmate" init -q
+  cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$doctor_home/firstmate/config/crew-dispatch.json"
+  printf 'herdr\n' > "$doctor_home/firstmate/config/backend"
+  printf 'pi\n' > "$doctor_home/firstmate/config/crew-harness"
+  printf 'tasks-axi\n' > "$doctor_home/firstmate/config/backlog-backend"
   lock_before=$(shasum -a 256 "$ROOT/flake.lock" | awk '{print $1}')
   set +e
   HOME="$doctor_home" WORKFLOW_LOG="$TMP_ROOT/lock.log" DOTFILES_ROOT="$ROOT" \
@@ -237,7 +245,7 @@ SCRIPT
   lock_after=$(shasum -a 256 "$ROOT/flake.lock" | awk '{print $1}')
   [ "$status" -eq 42 ] || fail 'Nix failure did not propagate'
   [ "$lock_before" = "$lock_after" ] || fail 'flake.lock was not rolled back'
-  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="/usr/bin:/bin" \
+  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PI_SIGNED_BIN=/nonexistent PATH="/usr/bin:/bin" \
     "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/doctor.out" || fail 'read-only doctor found a fixture error'
   assert_file_contains "$TMP_ROOT/doctor.out" 'no blocking issues' 'doctor did not report its result'
   pass 'Nix lock rollback and read-only doctor behavior'

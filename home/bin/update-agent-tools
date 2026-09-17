@@ -18,6 +18,27 @@ resolve_script_dir() {
 }
 
 script_dir=$(resolve_script_dir)
+resolve_dotfiles_root() {
+  local candidate
+  if [ -n "${DOTFILES_ROOT:-}" ] && candidate=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if candidate=$(git rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if candidate=$(git -C "$HOME/dotfiles" rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if candidate=$(git -C "$script_dir/../.." rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  return 1
+}
+dotfiles_root=$(resolve_dotfiles_root 2>/dev/null || true)
 
 if [ "$#" -gt 0 ]; then
   case "$1" in
@@ -78,11 +99,11 @@ else
 fi
 
 if [ -x "$script_dir/update-skills" ]; then
-  if ! "$script_dir/update-skills"; then
+  if ! "$script_dir/update-skills" --seed; then
     failures+=(skills)
   fi
 elif command -v update-skills >/dev/null 2>&1; then
-  if ! update-skills; then
+  if ! update-skills --seed; then
     failures+=(skills)
   fi
 else
@@ -93,11 +114,11 @@ fi
 # Firstmate is fetched on every full transaction, but update-firstmate refuses
 # dirty, ahead, detached, and diverged checkouts without rewriting them.
 if command -v update-firstmate >/dev/null 2>&1; then
-  if ! update-firstmate; then
+  if ! DOTFILES_ROOT="$dotfiles_root" FIRSTMATE_HOME="${FIRSTMATE_HOME:-$HOME/firstmate}" update-firstmate; then
     failures+=(firstmate)
   fi
 elif [ -x "$script_dir/update-firstmate" ]; then
-  if ! "$script_dir/update-firstmate"; then
+  if ! DOTFILES_ROOT="$dotfiles_root" FIRSTMATE_HOME="${FIRSTMATE_HOME:-$HOME/firstmate}" "$script_dir/update-firstmate"; then
     failures+=(firstmate)
   fi
 else
@@ -106,13 +127,17 @@ else
 fi
 
 if ((${#failures[@]} == 0)); then
-  if [ -x "$script_dir/prune-migration-backups" ]; then
-    if ! "$script_dir/prune-migration-backups"; then failures+=(backup-prune); fi
-  elif command -v prune-migration-backups >/dev/null 2>&1; then
-    if ! prune-migration-backups; then failures+=(backup-prune); fi
+  if [ "${DOTFILES_FULL_TRANSACTION_SUCCESS:-}" = 1 ]; then
+    if [ -x "$script_dir/prune-migration-backups" ]; then
+      if ! "$script_dir/prune-migration-backups"; then failures+=(backup-prune); fi
+    elif command -v prune-migration-backups >/dev/null 2>&1; then
+      if ! prune-migration-backups; then failures+=(backup-prune); fi
+    else
+      printf '%s\n' 'backups: pruning helper unavailable; old migration backups retained' >&2
+      failures+=(backup-prune)
+    fi
   else
-    printf '%s\n' 'backups: pruning helper unavailable; old migration backups retained' >&2
-    failures+=(backup-prune)
+    printf '%s\n' 'backups: retaining migration snapshots; full-transaction success was not proven'
   fi
 else
   printf 'agent tools: retaining migration backups because transaction had failures: %s\n' "${failures[*]}" >&2

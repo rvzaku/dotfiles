@@ -4,6 +4,40 @@
 # unrelated Topgrade work.
 set -u
 
+skill_sources=(
+  https://github.com/kunchenguid/firstmate
+  https://github.com/kunchenguid/vision
+  https://github.com/kunchenguid/no-mistakes
+  # Treehouse publishes a binary, not a Skills package; update-agent-tools owns it.
+  https://github.com/kunchenguid/axi
+  https://github.com/mattpocock/skills
+  https://github.com/mitsuhiko/agent-stuff
+  https://github.com/pbakaus/impeccable
+)
+
+seed_sources() {
+  local source
+  for source in "${skill_sources[@]}"; do
+    if ! skills add "$source" --global --all --yes; then
+      printf 'skills: failed to seed %s; preserving existing skills\n' "$source" >&2
+      return 1
+    fi
+  done
+}
+
+if [ "${1:-}" = '--seed' ]; then
+  shift
+  [ "$#" -eq 0 ] || { printf 'usage: %s [--seed]\n' "$0" >&2; exit 2; }
+  if ! command -v skills >/dev/null 2>&1; then
+    printf '%s\n' 'skills: global skills client unavailable; seeding is unproven' >&2
+    exit 1
+  fi
+  seed_sources || exit 1
+elif [ "$#" -gt 0 ]; then
+  printf 'usage: %s [--seed]\n' "$0" >&2
+  exit 2
+fi
+
 if ! command -v skills >/dev/null 2>&1; then
   printf '%s\n' 'skills: global skills client unavailable; global skill update is unproven' >&2
   exit 1
