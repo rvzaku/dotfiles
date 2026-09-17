@@ -351,6 +351,8 @@ if command -v container >/dev/null 2>&1; then
   else
     fail_check 'Apple Container CLI is installed but its system service is not running'
   fi
+else
+  fail_check 'Apple Container CLI is unavailable; Container state is unproven'
 fi
 
 if [ "$problems" -gt 0 ]; then

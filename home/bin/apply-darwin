@@ -175,11 +175,27 @@ if [ -f "$ROOT/flake.lock" ]; then
     exit 1
   fi
 fi
-# shellcheck disable=SC2329 # invoked by EXIT trap
+# shellcheck disable=SC2329 # invoked by EXIT and signal traps
+restore_lock() {
+  [ -z "$lock_backup" ] || cp -p "$lock_backup" "$ROOT/flake.lock"
+}
 cleanup() {
   [ -z "$lock_backup" ] || rm -f "$lock_backup"
 }
+handle_interrupt() {
+  local signal_status=$1
+  trap - INT TERM HUP
+  if ! restore_lock; then
+    printf 'dotfiles: signal interruption occurred and flake.lock rollback failed\n' >&2
+    signal_status=1
+  fi
+  cleanup
+  exit "$signal_status"
+}
 trap cleanup EXIT
+trap 'handle_interrupt 130' INT
+trap 'handle_interrupt 143' TERM
+trap 'handle_interrupt 129' HUP
 
 NIX_BIN=$(command -v nix)
 set +e

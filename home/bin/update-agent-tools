@@ -20,11 +20,11 @@ resolve_script_dir() {
 script_dir=$(resolve_script_dir)
 resolve_dotfiles_root() {
   local candidate
-  if [ -n "${DOTFILES_ROOT:-}" ] && candidate=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
+  if candidate=$(git -C "$script_dir/../.." rev-parse --show-toplevel 2>/dev/null); then
     printf '%s\n' "$candidate"
     return 0
   fi
-  if candidate=$(git rev-parse --show-toplevel 2>/dev/null); then
+  if [ -n "${DOTFILES_ROOT:-}" ] && candidate=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
     printf '%s\n' "$candidate"
     return 0
   fi
@@ -32,7 +32,7 @@ resolve_dotfiles_root() {
     printf '%s\n' "$candidate"
     return 0
   fi
-  if candidate=$(git -C "$script_dir/../.." rev-parse --show-toplevel 2>/dev/null); then
+  if candidate=$(git rev-parse --show-toplevel 2>/dev/null); then
     printf '%s\n' "$candidate"
     return 0
   fi

@@ -319,6 +319,11 @@ case "$1" in
 esac
 SCRIPT
   chmod +x "$FAKE/pi-signed" "$FAKE/av"
+  cat >"$FAKE/container" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 0
+SCRIPT
+  chmod +x "$FAKE/container"
   rm -f "$FAKE/darwin-rebuild"
   mkdir -p "$doctor_home/firstmate/config"
   git -C "$doctor_home/firstmate" init -q
