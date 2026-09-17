@@ -56,7 +56,7 @@ WARNING
 }
 
 ROOT=$(resolve_root) || exit 1
-legacy_alias="$HOME/.${DOTFILES_LEGACY_ALIAS_NAME:-dotfiles}"
+legacy_alias="$HOME/.dotfiles"
 if [ -L "$legacy_alias" ]; then
   legacy_target=$(cd "$legacy_alias" 2>/dev/null && pwd -P || true)
   if [ "$legacy_target" = "$ROOT" ]; then

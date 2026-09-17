@@ -285,7 +285,6 @@ in
     postgresql
     redis
     # Security and the native macOS container workflow are explicit owners.
-    clamav
     container
 
     # editor/LSP servers for the declared languages and configuration formats

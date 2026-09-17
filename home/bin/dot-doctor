@@ -61,7 +61,7 @@ else
   fail_check 'Homebrew cleanup policy is not explicit'
 fi
 
-legacy_alias="$HOME/.${DOTFILES_LEGACY_ALIAS_NAME:-dotfiles}"
+legacy_alias="$HOME/.dotfiles"
 if [ -e "$legacy_alias" ] || [ -L "$legacy_alias" ]; then
   fail_check "legacy hidden alias exists; use \$HOME/dotfiles or DOTFILES_ROOT"
 else

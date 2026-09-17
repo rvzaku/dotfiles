@@ -11,7 +11,7 @@ branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD || true)
 
 # Fetch directly from Kun even if a user changed the checkout's origin to a
 # fork. The dedicated remote-tracking ref does not rewrite remotes or work.
-upstream_url="${FIRSTMATE_UPSTREAM_URL:-https://github.com/kunchenguid/firstmate.git}"
+upstream_url="https://github.com/kunchenguid/firstmate.git"
 upstream_ref="refs/remotes/dotfiles-kun/$branch"
 if [ -n "$branch" ]; then
   fetch_refspec="+refs/heads/$branch:$upstream_ref"

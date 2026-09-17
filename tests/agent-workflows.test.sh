@@ -168,11 +168,12 @@ test_firstmate_relations() {
   branch=$(git -C "$src" branch --show-current)
   git clone -q --bare "$src" "$remote"
   git clone -q "$remote" "$fm"
+  git -C "$fm" config url."$remote".insteadOf https://github.com/kunchenguid/firstmate.git
 
   printf two >"$src/file"
   git -C "$src" commit -qam remote-update
   git -C "$src" push -q "$remote" "$branch"
-  FIRSTMATE_HOME="$fm" FIRSTMATE_UPSTREAM_URL="$remote" "$ROOT/home/bin/update-firstmate" \
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
     >"$TMP_ROOT/firstmate-behind.out" || fail 'behind Firstmate update failed'
   [ "$(cat "$fm/file")" = two ] || fail 'behind checkout did not fast-forward'
 
@@ -180,7 +181,7 @@ test_firstmate_relations() {
   git -C "$fm" add local
   git -C "$fm" commit -qm local-ahead
   before=$(git -C "$fm" rev-parse HEAD)
-  FIRSTMATE_HOME="$fm" FIRSTMATE_UPSTREAM_URL="$remote" "$ROOT/home/bin/update-firstmate" \
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
     >"$TMP_ROOT/firstmate-ahead.out" || fail 'ahead Firstmate check failed'
   [ "$(git -C "$fm" rev-parse HEAD)" = "$before" ] || fail 'ahead checkout was rewritten'
   assert_file_contains "$TMP_ROOT/firstmate-ahead.out" 'preserving' 'ahead state was not reported'
@@ -188,13 +189,14 @@ test_firstmate_relations() {
   git -C "$fm" reset -q --hard HEAD~1
   printf dirty >>"$fm/file"
   before=$(git -C "$fm" rev-parse HEAD)
-  FIRSTMATE_HOME="$fm" FIRSTMATE_UPSTREAM_URL="$remote" "$ROOT/home/bin/update-firstmate" \
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
     >"$TMP_ROOT/firstmate-dirty.out" || fail 'dirty Firstmate check failed'
   [ "$(git -C "$fm" rev-parse HEAD)" = "$before" ] || fail 'dirty checkout was rewritten'
 
   # A separate clone proves divergence without inheriting the dirty fixture.
   local diverged="$TMP_ROOT/firstmate-diverged"
   git clone -q "$remote" "$diverged"
+  git -C "$diverged" config url."$remote".insteadOf https://github.com/kunchenguid/firstmate.git
   git -C "$diverged" config user.name test
   git -C "$diverged" config user.email test@example.invalid
   printf local >"$diverged/diverged"
@@ -205,7 +207,7 @@ test_firstmate_relations() {
   git -C "$src" commit -qm remote-diverged
   git -C "$src" push -q "$remote" "$branch"
   before=$(git -C "$diverged" rev-parse HEAD)
-  FIRSTMATE_HOME="$diverged" FIRSTMATE_UPSTREAM_URL="$remote" "$ROOT/home/bin/update-firstmate" \
+  FIRSTMATE_HOME="$diverged" "$ROOT/home/bin/update-firstmate" \
     >"$TMP_ROOT/firstmate-diverged.out" || fail 'diverged Firstmate check failed'
   [ "$(git -C "$diverged" rev-parse HEAD)" = "$before" ] || fail 'diverged checkout was rewritten'
   assert_file_contains "$TMP_ROOT/firstmate-diverged.out" 'diverges' 'diverged state was not reported'
