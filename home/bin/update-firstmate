@@ -22,7 +22,8 @@ backup_base="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/firstmate"
 BACKUP_JOURNAL=
 
 recover_transaction() {
-  local transaction_dir=$1 journal="$transaction_dir/journal" kind target backup committed=0
+  local transaction_dir=$1 journal kind target backup committed=0
+  journal="$transaction_dir/journal"
   local -a backup_targets=() backup_paths=() chmod_targets=() chmod_modes=()
   [ -f "$journal" ] || { rm -rf "$transaction_dir"; return 0; }
   while IFS=$'\t' read -r kind target backup; do
@@ -85,28 +86,28 @@ resolve_pi_signed() {
   local candidate
   if [ "${PI_SIGNED_BIN+x}" = x ]; then
     if [ -x "$PI_SIGNED_BIN" ] && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
-      printf '%s\n' "$PI_SIGNED_BIN"
+      printf '%s\n' 'pi-signed'
       return 0
     fi
   fi
   if candidate=$(command -v pi-signed 2>/dev/null) && [ -x "$candidate" ] \
     && "$candidate" --version >/dev/null 2>&1; then
-    printf '%s\n' "$candidate"
+    printf '%s\n' 'pi-signed'
     return 0
   fi
   for candidate in /opt/homebrew/bin/pi-signed /usr/local/bin/pi-signed; do
     if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
-      printf '%s\n' "$candidate"
+      printf '%s\n' 'pi-signed'
       return 0
     fi
   done
   if candidate=$(command -v pi 2>/dev/null) && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
-    printf '%s\n' "$candidate"
+    printf '%s\n' 'pi'
     return 0
   fi
   for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
     if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
-      printf '%s\n' "$candidate"
+      printf '%s\n' 'pi'
       return 0
     fi
   done

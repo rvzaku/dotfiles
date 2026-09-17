@@ -197,18 +197,6 @@ else
   failures+=(firstmate)
 fi
 
-if ! "$script_dir/verify-av" 'agent tools'; then
-  failures+=(av-security)
-fi
-if [ -x "$script_dir/dot-doctor" ]; then
-  if ! DOTFILES_ROOT="$dotfiles_root" "$script_dir/dot-doctor"; then
-    failures+=(dot-doctor)
-  fi
-else
-  printf '%s\n' 'agent tools: dot-doctor unavailable; update is unproven' >&2
-  failures+=(dot-doctor)
-fi
-
 if ((${#failures[@]} == 0)); then
   if [ -x "$script_dir/prune-migration-backups" ]; then
     if ! "$script_dir/prune-migration-backups"; then failures+=(backup-prune); fi

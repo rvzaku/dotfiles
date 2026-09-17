@@ -420,30 +420,67 @@ preserve_cursor_leftover() {
   done
 }
 
+verify_apple_container_pkg_signature() {
+  local signature=$1
+  # pkgutil reports the complete certificate chain. Require both the Apple
+  # Developer ID Installer leaf and Apple Root CA anchor; a generic trusted
+  # signature is not sufficient for this privileged install.
+  if ! printf '%s\n' "$signature" | grep -Eq 'Status: signed by a certificate trusted by (Mac OS X|macOS)' \
+    || ! printf '%s\n' "$signature" | awk '
+      /^ *Certificate Chain:/ { in_chain = 1; next }
+      in_chain && /Developer ID Installer: Apple Inc\./ { installer = 1 }
+      in_chain && /Apple Root CA/ { root = 1 }
+      END { exit !(installer && root) }
+  '; then
+    printf '%s\n' "$signature" >&2
+    printf '%s\n' 'bootstrap: expected an Apple Developer ID Installer chain anchored at Apple Root CA' >&2
+    return 1
+  fi
+}
+
+container_provenance_verified() {
+  local container_bin=$1 provenance=$2 recorded_package recorded_binary binary_signature code_signature
+  [ -f "$provenance" ] || return 1
+  [ "$(stat -f '%Su' "$provenance" 2>/dev/null)" = root ] || return 1
+  case "$(stat -f '%Lp' "$provenance" 2>/dev/null)" in 600|400) ;; *) return 1 ;; esac
+  [ -x "$container_bin" ] || return 1
+  check_command pkgutil
+  pkgutil --pkg-info com.apple.container-installer >/dev/null 2>&1 || return 1
+  pkgutil --file-info "$container_bin" 2>/dev/null \
+    | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }' \
+    || return 1
+  check_command codesign
+  codesign --verify --strict "$container_bin" >/dev/null 2>&1 || return 1
+  code_signature=$(codesign --display --verbose=4 "$container_bin" 2>&1) || return 1
+  printf '%s\n' "$code_signature" | grep -Fq 'Authority=Developer ID Application: Apple Inc.' || return 1
+  grep -Fqx 'signer=Developer ID Installer: Apple Inc.' "$provenance" || return 1
+  grep -Fqx 'root=Apple Root CA' "$provenance" || return 1
+  recorded_package=$(sed -n 's/^package_sha256=//p' "$provenance")
+  printf '%s\n' "$recorded_package" | grep -Eq '^[[:xdigit:]]{64}$' || return 1
+  recorded_binary=$(sed -n 's/^binary_sha256=//p' "$provenance")
+  printf '%s\n' "$recorded_binary" | grep -Eq '^[[:xdigit:]]{64}$' || return 1
+  binary_signature=$(shasum -a 256 "$container_bin" | awk '{print $1}') || return 1
+  [ "$recorded_binary" = "$binary_signature" ]
+}
+
 ensure_apple_container() {
   printf '%s\n' '==> Step 13: Apple Container official installer'
-  local container_bin=/usr/local/bin/container apple_identity='Apple Inc.'
-  if [ -x "$container_bin" ]; then
-    check_command pkgutil
-    local code_signature
-    if ! pkgutil --pkg-info com.apple.container-installer >/dev/null 2>&1 \
-      || ! pkgutil --file-info "$container_bin" 2>/dev/null \
-        | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }' \
-      || ! code_signature=$(codesign --display --verbose=4 "$container_bin" 2>&1) \
-      || ! codesign --verify --strict "$container_bin" >/dev/null 2>&1 \
-      || ! printf '%s\n' "$code_signature" | grep -Fq "Authority=Developer ID Application: $apple_identity"; then
-      printf 'bootstrap: refusing unverified Apple Container binary at %s\n' "$container_bin" >&2
-      return 1
-    fi
-    printf '    Apple Container CLI is already installed at %s\n' "$container_bin"
+  local container_bin=/usr/local/bin/container
+  local provenance=/var/db/com.apple.container-installer.provenance
+  local needs_install=true
+  if container_provenance_verified "$container_bin" "$provenance"; then
+    needs_install=false
+    printf '    Apple Container installation provenance is verified at %s\n' "$container_bin"
+  elif [ -x "$container_bin" ]; then
+    printf 'bootstrap: existing Container at %s has no verifiable Apple package provenance; refusing to start it and taking the signed installer path\n' "$container_bin" >&2
   elif command -v container >/dev/null 2>&1; then
-    printf 'bootstrap: refusing Container executable outside Apple installer path %s: %s\n' \
-      "$container_bin" "$(command -v container)" >&2
-    return 1
-  else
+    printf 'bootstrap: refusing unverified Container executable outside Apple installer path: %s; taking the signed installer path\n' "$(command -v container)" >&2
+  fi
+
+  if [ "$needs_install" = true ]; then
     check_command curl
     check_command jq
-    local release_json pkg_url pkg signature
+    local release_json pkg_url pkg signature pkg_sha binary_sha provenance_tmp
     release_json="${TMPDIR:-/tmp}/bootstrap-container-release.$$.json"
     pkg="${TMPDIR:-/tmp}/container-$$.pkg"
     curl --proto '=https' --tlsv1.2 -fsSL \
@@ -458,22 +495,48 @@ ensure_apple_container() {
     if ! signature=$(pkgutil --check-signature "$pkg" 2>&1); then
       printf '%s\n' "$signature" >&2
       rm -f "$release_json" "$pkg"
-      printf '%s\n' 'bootstrap: Apple Container package signature validation failed' >&2
+      printf '%s\n' 'bootstrap: Apple Container package signature validation failed; rerun bootstrap.sh after obtaining the official package' >&2
       return 1
     fi
-    case "$signature" in
-      *"Developer ID Installer: $apple_identity"*) ;;
-      *)
-        printf '%s\n' "$signature" >&2
-        rm -f "$release_json" "$pkg"
-        printf '%s\n' 'bootstrap: Apple Container package is not signed by Apple' >&2
-        return 1
-        ;;
-    esac
+    verify_apple_container_pkg_signature "$signature" || {
+      rm -f "$release_json" "$pkg"
+      printf '%s\n' 'bootstrap: Apple Container package is not proven to be Apple-signed; rerun bootstrap.sh with the official release' >&2
+      return 1
+    }
+    check_command shasum
+    pkg_sha=$(shasum -a 256 "$pkg" | awk '{print $1}') || { rm -f "$release_json" "$pkg"; return 1; }
     printf '%s\n' '    installing Apple Container signed package (administrator approval may be requested)'
     sudo installer -pkg "$pkg" -target /
     rm -f "$release_json" "$pkg"
+    [ -x "$container_bin" ] || {
+      printf 'bootstrap: Apple Container installer did not provide %s\n' "$container_bin" >&2
+      return 1
+    }
+    check_command codesign
+    codesign --verify --strict "$container_bin" >/dev/null 2>&1 || {
+      printf 'bootstrap: installed Container binary failed code-signature verification at %s\n' "$container_bin" >&2
+      return 1
+    }
+    binary_sha=$(shasum -a 256 "$container_bin" | awk '{print $1}') || return 1
+    provenance_tmp="${TMPDIR:-/tmp}/container-provenance.$$.tmp"
+    {
+      printf 'package_sha256=%s\n' "$pkg_sha"
+      printf 'binary_sha256=%s\n' "$binary_sha"
+      printf '%s\n' 'signer=Developer ID Installer: Apple Inc.'
+      printf '%s\n' 'root=Apple Root CA'
+    } >"$provenance_tmp"
+    if ! sudo install -m 600 "$provenance_tmp" "$provenance"; then
+      rm -f "$provenance_tmp"
+      printf '%s\n' 'bootstrap: could not persist Apple Container signature provenance; refusing to start the service' >&2
+      return 1
+    fi
+    rm -f "$provenance_tmp"
+    if ! container_provenance_verified "$container_bin" "$provenance"; then
+      printf '%s\n' 'bootstrap: installed Apple Container provenance could not be revalidated; refusing to start the service' >&2
+      return 1
+    fi
   fi
+
   if [ ! -x "$container_bin" ]; then
     printf 'bootstrap: Apple Container installer did not provide %s\n' "$container_bin" >&2
     return 1

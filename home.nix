@@ -59,20 +59,6 @@ let
     # protected and a failed adoption must fail closed.
   };
 
-  directoryLinks =
-    sourcePrefix: targetPrefix:
-    lib.listToAttrs (
-      map (
-        sourceRelative:
-        let
-          relative = lib.removePrefix "${sourcePrefix}/" sourceRelative;
-        in
-        {
-          name = "${targetPrefix}/${relative}";
-          value = fileLink sourceRelative;
-        }
-      ) (recursiveFiles sourcePrefix)
-    );
 
   directoryPairs =
     sourcePrefix: targetPrefix:
@@ -212,10 +198,11 @@ let
     let
       evaluationHome = builtins.getEnv "DOTFILES_HOME";
       targetPath = "${homeDirectory}/${target}";
-      targetType = builtins.tryEval (builtins.readFileType targetPath);
+      targetType = if builtins.pathExists targetPath
+        then builtins.readFileType targetPath
+        else "missing";
     in evaluationHome != ""
-      && targetType.success
-      && targetType.value == "symlink";
+      && targetType == "symlink";
 
   managedPairs =
     explicitPairs ++ publicBinPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
@@ -277,6 +264,20 @@ in
     hyperfine
     lazygit
     neovim
+    # Required command-line utilities whose short names are part of the
+    # workspace contract (nom, nix-tree, nvd, nixd, tldr, and delta included).
+    nix-output-monitor
+    comma
+    nix-tree
+    nvd
+    nixd
+    atuin
+    yazi
+    btop
+    duf
+    ouch
+    tealdeer
+    delta
     shellcheck
     shfmt
     hadolint
@@ -374,14 +375,16 @@ in
 
   # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
   home.activation.ensureUserNpmPrefix = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    mkdir -p "$HOME/.local/npm/bin" "$HOME/.local/npm/lib" "$HOME/.local/share/pnpm"
+    mkdir -p ${lib.escapeShellArg "${homeDirectory}/.local/npm/bin"} \
+      ${lib.escapeShellArg "${homeDirectory}/.local/npm/lib"} \
+      ${lib.escapeShellArg "${homeDirectory}/.local/share/pnpm"}
   '';
 
   # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
   # declarative activation. Topgrade owns later latest-version updates.
   home.activation.agentNpmTools = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     if command -v npm >/dev/null 2>&1; then
-      if ! NPM_CONFIG_PREFIX="$HOME/.local/npm" npm install --global --no-fund --no-audit \
+      if ! NPM_CONFIG_PREFIX=${lib.escapeShellArg "${homeDirectory}/.local/npm"} npm install --global --no-fund --no-audit \
         acpx@0.15.1 \
         gh-axi@0.1.35 \
         chrome-devtools-axi@0.1.34 \
@@ -524,7 +527,7 @@ in
   # Manager checks links; the authored base remains separately managed.
   home.activation.prepareClaudeSettings = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
     ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-claude-settings" \
-      "${dotfiles}/home/.claude/settings.json" "$HOME/.claude/settings.json"
+      "${dotfiles}/home/.claude/settings.json" ${lib.escapeShellArg "${homeDirectory}/.claude/settings.json"}
   '';
 
   home.file = managedFiles;

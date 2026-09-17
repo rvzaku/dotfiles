@@ -244,6 +244,24 @@ test_installer_verification_fixture() {
   printf '%s  %s\n' "$hash" "$fixture_root/pkg/installer" | shasum -a 256 -c - >/dev/null
   printf '%s  %s\n' "${hash}bad" "$fixture_root/pkg/installer" | shasum -a 256 -c - >/dev/null 2>&1 && \
     fail 'checksum fixture accepted an invalid digest'
+  local signature_fn good_signature bad_signature
+  signature_fn=$(awk '/^verify_apple_container_pkg_signature\(\)/ { found = 1 } found { print; if ($0 == "}") exit }' "$ROOT/bootstrap.sh")
+  [ -n "$signature_fn" ] || fail 'Apple Container signature verifier was not found'
+  eval "$signature_fn"
+  good_signature=$(cat <<'EOF'
+Package "container.pkg":
+    Status: signed by a certificate trusted by macOS
+    Certificate Chain:
+    1. Developer ID Installer: Apple Inc. (ABCDE12345)
+    2. Apple Root CA
+EOF
+  )
+  verify_apple_container_pkg_signature "$good_signature" || fail 'valid Apple Container authority chain was rejected'
+  bad_signature=${good_signature/Apple Root CA/Example Root CA}
+  if verify_apple_container_pkg_signature "$bad_signature" >/dev/null 2>&1; then
+    fail 'unanchored Apple Container authority chain was accepted'
+  fi
+  pass 'Apple Container package verifier requires Apple Developer ID Installer chain anchored at Apple Root CA'
   pass 'installer checksum verification fixture rejects tampered payloads'
 }
 

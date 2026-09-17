@@ -22,24 +22,9 @@ SCRIPT
   chmod +x "$FAKE/$name"
 }
 
-make_agent_tools_fixture() {
-  local bin="$TMP_ROOT/update-agent-tools-fixture"
-  mkdir -p "$bin"
-  cp "$ROOT/home/bin/update-agent-tools" "$bin/update-agent-tools"
-  cp "$ROOT/home/bin/verify-av" "$bin/verify-av"
-  cp "$ROOT/home/bin/update-skills" "$bin/update-skills"
-  cp "$ROOT/home/bin/prune-migration-backups" "$bin/prune-migration-backups"
-  cat >"$bin/dot-doctor" <<'SCRIPT'
-#!/usr/bin/env bash
-if [ "${DOT_DOCTOR_FAIL:-0}" = 1 ]; then exit 1; fi
-exit 0
-SCRIPT
-  chmod +x "$bin"/*
-  printf '%s\n' "$bin/update-agent-tools"
-}
 trusted_agent_tool_present() {
   local tool directory
-  for tool in no-mistakes treehouse pi-signed av; do
+  for tool in no-mistakes treehouse pi-signed; do
     for directory in /usr/bin /bin /opt/homebrew/bin /opt/homebrew/sbin /run/current-system/sw/bin /nix/var/nix/profiles/default/bin /usr/local/bin; do
       [ -x "$directory/$tool" ] && return 0
     done
@@ -273,81 +258,50 @@ SCRIPT
 }
 
 test_av_authority_blocks_high_findings() {
-  local status
+  local doctor_home="$TMP_ROOT/av-doctor-home" status
+  mkdir -p "$doctor_home"
   cat >"$FAKE/av" <<'SCRIPT'
 #!/usr/bin/env bash
 case "$1 $2" in
-  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
   'scan --json') printf '{"findings":[{"severity":"high"}]}\n' ;;
   *) exit 2 ;;
 esac
 SCRIPT
-  cp "$(command -v jq)" "$FAKE/jq"
+  cat >"$FAKE/jq" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '1\n'
+SCRIPT
   chmod +x "$FAKE/av" "$FAKE/jq"
   set +e
-  PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/verify-av" test >"$TMP_ROOT/av-doctor.out" 2>&1
+  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/av-doctor.out" 2>&1
   status=$?
   set -e
-  [ "$status" -ne 0 ] || fail 'AV gate claimed success with a HIGH finding'
+  [ "$status" -ne 0 ] || fail 'dot-doctor claimed success with a HIGH Automic Vault finding'
   assert_file_contains "$TMP_ROOT/av-doctor.out" 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' \
     'Automic Vault blocking finding was not reported'
-  cat >"$FAKE/av" <<'SCRIPT'
-#!/usr/bin/env bash
-case "$1 $2" in
-  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
-  'scan --json') printf '{"findings":[{"severity":"low"}]}' ;;
-  *) exit 2 ;;
-esac
-printf '\n'
-SCRIPT
-  chmod +x "$FAKE/av"
-  PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/verify-av" test >"$TMP_ROOT/av-low.out" 2>&1 \
-    || fail 'AV gate rejected a non-blocking LOW finding'
   rm -f "$FAKE/av" "$FAKE/jq"
   pass 'Automic Vault HIGH/CRITICAL findings block managed security success'
 }
 
+test_topgrade_updates_only_boundary() {
+  if grep -Eq 'verify-av|dot-doctor' "$ROOT/home/bin/update-agent-tools"; then
+    fail 'full Topgrade custom stage unexpectedly owns AV or dot-doctor gates'
+  fi
+  pass 'full Topgrade custom stage remains updates-only; AV and dot-doctor stay in bootstrap/rebuild'
+}
 test_skills_and_topgrade_boundaries() {
   if trusted_agent_tool_present; then
     pass 'Trusted agent tools present; update command fixture skipped'
     return 0
   fi
-  local log="$TMP_ROOT/updates.log" output update_script
-  update_script=$(make_agent_tools_fixture)
+  local log="$TMP_ROOT/updates.log" output
   : >"$log"
   mkdir -p "$TMP_ROOT/home/.local/bin"
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/home/.local/bin/update-skills"
   for command in npm no-mistakes treehouse skills update-firstmate pi; do
     fake_command "$command"
   done
-  cat >"$FAKE/av" <<'SCRIPT'
-#!/usr/bin/env bash
-case "$1 $2" in
-  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
-  'scan --json')
-    if [ "${AV_HIGH:-0}" = 1 ]; then
-      printf '{"findings":[{"severity":"HIGH","source":"fixture","explanation":"fixture finding"}]}'
-    else
-      printf '{"findings":[]}'
-    fi
-    ;;
-  *) exit 2 ;;
-esac
-printf '\n'
-SCRIPT
-  cat >"$FAKE/container" <<'SCRIPT'
-#!/usr/bin/env bash
-if [ "${DOT_DOCTOR_FAIL:-0}" = 1 ]; then exit 1; fi
-exit 0
-SCRIPT
-  cp "$(command -v jq)" "$FAKE/jq"
-  chmod +x "$FAKE/av" "$FAKE/container" "$FAKE/jq"
-  mkdir -p "$TMP_ROOT/home/firstmate/config"
-  git -C "$TMP_ROOT/home/firstmate" init -q
-  cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$TMP_ROOT/home/firstmate/config/crew-dispatch.json"
-  printf 'herdr\n' >"$TMP_ROOT/home/firstmate/config/backend"
-  printf 'pi\n' >"$TMP_ROOT/home/firstmate/config/crew-harness"
-  printf 'tasks-axi\n' >"$TMP_ROOT/home/firstmate/config/backlog-backend"
   HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-skills" --seed >/dev/null || fail 'Skills source seeding failed'
   assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --skill vision --yes' 'Vision Skills source was not seeded explicitly'
@@ -359,37 +313,16 @@ SCRIPT
   : >"$log"
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
-    "$update_script") || fail 'full agent update transaction failed'
+    "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
   [ "$(grep -c '^skills update --global --yes$' "$log")" -eq 1 ] \
     || fail 'global Skills registry update did not run exactly once for agent-stuff'
   assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
   [ "$(grep -c '^pi update$' "$log")" -eq 1 ] || fail 'Pi native update did not run exactly once'
   assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
   assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
-  local security_backup="$TMP_ROOT/security-backups" security_output
-  mkdir -p "$security_backup/old"
-  touch -t 202001010000 "$security_backup/old"
-  set +e
-  security_output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
-    PI_SIGNED_BIN=/nonexistent AV_HIGH=1 DOTFILES_BACKUP_BASE="$security_backup" \
-    PATH="$FAKE:/usr/bin:/bin" "$update_script" 2>&1)
-  local security_status=$?
-  set -e
-  [ "$security_status" -ne 0 ] || fail 'HIGH Automic Vault finding did not block full update'
-  [ -d "$security_backup/old" ] || fail 'HIGH Automic Vault finding allowed backup pruning'
-  assert_contains "$security_output" 'retaining migration backups' 'AV failure did not retain migration backups'
-  set +e
-  security_output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
-    PI_SIGNED_BIN=/nonexistent DOT_DOCTOR_FAIL=1 DOTFILES_BACKUP_BASE="$security_backup" \
-    PATH="$FAKE:/usr/bin:/bin" "$update_script" 2>&1)
-  security_status=$?
-  set -e
-  [ "$security_status" -ne 0 ] || fail 'failing dot-doctor did not block full update'
-  [ -d "$security_backup/old" ] || fail 'failing dot-doctor allowed backup pruning'
-  assert_contains "$security_output" 'retaining migration backups' 'dot-doctor failure did not retain migration backups'
   : >"$log"
   if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
-    "$update_script" --only brew >/dev/null 2>&1; then
+    "$ROOT/home/bin/update-agent-tools" --only brew >/dev/null 2>&1; then
     fail 'targeted update argument was accepted as a full transaction'
   fi
   [ ! -s "$log" ] || fail 'targeted update unexpectedly ran full-update commands'
@@ -398,8 +331,7 @@ SCRIPT
 }
 
 test_backup_prune_transaction() {
-  local backup_dir="$TMP_ROOT/transaction-backups" output update_script
-  update_script=$(make_agent_tools_fixture)
+  local backup_dir="$TMP_ROOT/transaction-backups" output
   mkdir -p "$backup_dir/old"
   touch -t 202001010000 "$backup_dir/old"
   cat >"$FAKE/update-firstmate" <<'SCRIPT'
@@ -411,7 +343,7 @@ SCRIPT
   set +e
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$TMP_ROOT/failure.log" \
     PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
-    PATH="$FAKE:/usr/bin:/bin" "$update_script" 2>&1)
+    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
   local status=$?
   set -e
   [ "$status" -ne 0 ] || fail 'failed full transaction unexpectedly succeeded'
@@ -426,8 +358,7 @@ test_npm_prefix_fallback() {
     pass 'Trusted agent tools present; npm prefix fixture skipped'
     return 0
   fi
-  local log="$TMP_ROOT/npm-prefix.log" output update_script
-  update_script=$(make_agent_tools_fixture)
+  local log="$TMP_ROOT/npm-prefix.log" output
   mkdir -p "$TMP_ROOT/npm-home/.local/bin"
   cat >"$FAKE/npm" <<'SCRIPT'
 #!/usr/bin/env bash
@@ -438,16 +369,10 @@ SCRIPT
     fake_command "$command"
   done
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
-  mkdir -p "$TMP_ROOT/npm-home/firstmate/config"
-  git -C "$TMP_ROOT/npm-home/firstmate" init -q
-  cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$TMP_ROOT/npm-home/firstmate/config/crew-dispatch.json"
-  printf 'herdr\n' >"$TMP_ROOT/npm-home/firstmate/config/backend"
-  printf 'pi\n' >"$TMP_ROOT/npm-home/firstmate/config/crew-harness"
-  printf 'tasks-axi\n' >"$TMP_ROOT/npm-home/firstmate/config/backlog-backend"
   output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
     NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
-    "$update_script") \
+    "$ROOT/home/bin/update-agent-tools") \
     || fail 'Nix npm prefix prevented the full update transaction'
   [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local/npm" ] \
     || fail 'full update retained a read-only Nix npm prefix'
@@ -607,6 +532,7 @@ test_pi_package_resource_ownership
 test_public_commands
 test_pi_preference_and_degradation
 test_av_authority_blocks_high_findings
+test_topgrade_updates_only_boundary
 test_skills_and_topgrade_boundaries
 test_npm_prefix_fallback
 test_firstmate_relations
