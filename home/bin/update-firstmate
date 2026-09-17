@@ -23,17 +23,22 @@ BACKUP_JOURNAL=
 
 recover_transaction() {
   local transaction_dir=$1 journal="$transaction_dir/journal" kind target backup committed=0
-  local -a backup_targets=() backup_paths=()
+  local -a backup_targets=() backup_paths=() chmod_targets=() chmod_modes=()
   [ -f "$journal" ] || { rm -rf "$transaction_dir"; return 0; }
   while IFS=$'\t' read -r kind target backup; do
     case "$kind" in
       install) rm -f -- "$target" ;;
       backup) backup_targets+=("$target"); backup_paths+=("$backup") ;;
+      chmod) chmod_targets+=("$target"); chmod_modes+=("$backup") ;;
       commit) committed=1 ;;
     esac
   done <"$journal"
   [ "$committed" -eq 0 ] || { rm -rf "$transaction_dir"; return 0; }
   local i
+  for ((i=${#chmod_targets[@]} - 1; i >= 0; i--)); do
+    [ -e "${chmod_targets[$i]}" ] || [ -L "${chmod_targets[$i]}" ] || continue
+    chmod "${chmod_modes[$i]}" "${chmod_targets[$i]}" || return 1
+  done
   for ((i=${#backup_targets[@]} - 1; i >= 0; i--)); do
     if [ -e "${backup_paths[$i]}" ] || [ -L "${backup_paths[$i]}" ]; then
       mv -f -- "${backup_paths[$i]}" "${backup_targets[$i]}" || return 1
@@ -111,8 +116,16 @@ resolve_pi_signed() {
 materialize_firstmate_config() {
   local config_dir="$repo/config" dispatch="$dotfiles_root/home/.config/firstmate/crew-dispatch.json"
   local harness transaction_dir journal config_created=0 target i harness_available=1
-  local -a targets staged_paths changed_indices
+  local -a targets staged_paths changed_indices identical_indices identical_modes
   changed_indices=()
+  identical_indices=()
+  identical_modes=()
+  restore_identical_modes() {
+    local j
+    for ((j=${#identical_indices[@]} - 1; j >= 0; j--)); do
+      chmod "${identical_modes[$j]}" "${targets[${identical_indices[$j]}]}" || true
+    done
+  }
   [ -f "$dispatch" ] || {
     printf 'firstmate: missing authored crew-dispatch.json at %s\n' "$dispatch" >&2
     return 1
@@ -151,6 +164,7 @@ materialize_firstmate_config() {
   BACKUP_JOURNAL="$journal"
   rollback_materialization() {
     trap - HUP INT TERM
+    restore_identical_modes
     recover_transaction "$transaction_dir"
     BACKUP_JOURNAL=
   }
@@ -191,11 +205,25 @@ materialize_firstmate_config() {
         return 1
       fi
       if [ -f "$target" ] && [ ! -L "$target" ] && cmp -s "${staged_paths[$i]}" "$target"; then
-        [ "$i" -eq 0 ] || chmod 600 "$target" || return 1
+        if [ "$i" -ne 0 ]; then
+          identical_indices+=("$i")
+          identical_modes+=("$(stat -f '%OLp' "$target" 2>/dev/null || stat -c '%a' "$target")")
+        fi
         continue
       fi
     fi
     changed_indices+=("$i")
+  done
+  for i in "${!identical_indices[@]}"; do
+    target=${targets[${identical_indices[$i]}]}
+    if ! printf 'chmod\t%s\t%s\n' "$target" "${identical_modes[$i]}" >>"$journal"; then
+      rollback_materialization
+      return 1
+    fi
+    if ! chmod 600 "$target"; then
+      rollback_materialization
+      return 1
+    fi
   done
 
   if ((${#changed_indices[@]} > 0)); then

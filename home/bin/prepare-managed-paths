@@ -217,6 +217,8 @@ validate_parents() {
   done
 }
 
+recover_directory_migrations
+
 # Establish real directories before validating any leaf.  The source argument
 # is retained in the manifest to make this migration explicit and auditable.
 while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_relative; do
