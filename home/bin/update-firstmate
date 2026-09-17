@@ -20,41 +20,26 @@ dotfiles_root=${DOTFILES_ROOT:-$(cd "$script_dir/../.." && pwd -P)}
 backup_base="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/firstmate"
 
 backup_existing() {
-  local target=$1 candidate stamp counter=0
+  local target=$1 candidate stamp counter=0 destination
+  BACKUP_PATH=
   [ -e "$target" ] || [ -L "$target" ] || return 0
   stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-  mkdir -p "$backup_base"
+  mkdir -p "$backup_base" || return 1
   while :; do
     candidate="$backup_base/$stamp-$$"
     [ "$counter" -eq 0 ] || candidate="$candidate-$counter"
     if mkdir "$candidate" 2>/dev/null; then
-      mv "$target" "$candidate/$(basename "$target")"
-      printf 'firstmate: backed up %s to %s\n' "$target" "$candidate/$(basename "$target")"
-      return 0
+      destination="$candidate/$(basename "$target")"
+      if mv "$target" "$destination"; then
+        BACKUP_PATH=$destination
+        printf 'firstmate: backed up %s to %s\n' "$target" "$destination"
+        return 0
+      fi
+      rmdir "$candidate" 2>/dev/null || true
+      return 1
     fi
     counter=$((counter + 1))
   done
-}
-
-write_config_leaf() {
-  local target=$1 value=$2 tmp
-  if [ -e "$target" ] || [ -L "$target" ]; then
-    if [ -f "$target" ] && [ ! -L "$target" ] && [ "$(cat "$target")" = "$value" ]; then
-      return 0
-    fi
-    if [ -d "$target" ] && [ ! -L "$target" ]; then
-      printf 'firstmate: refusing to replace directory %s\n' "$target" >&2
-      return 1
-    fi
-    backup_existing "$target" || return 1
-  fi
-  tmp=$(mktemp "$target.tmp.XXXXXX") || return 1
-  if ! printf '%s\n' "$value" >"$tmp"; then
-    rm -f "$tmp"
-    return 1
-  fi
-  chmod 600 "$tmp"
-  mv -f "$tmp" "$target"
 }
 
 resolve_pi_signed() {
@@ -75,7 +60,8 @@ resolve_pi_signed() {
 
 materialize_firstmate_config() {
   local config_dir="$repo/config" dispatch="$dotfiles_root/home/.config/firstmate/crew-dispatch.json"
-  local harness tmp
+  local harness transaction_dir config_created=0 target i
+  local -a targets staged_paths changed_indices backup_targets backup_paths installed_indices
   [ -f "$dispatch" ] || {
     printf 'firstmate: missing authored crew-dispatch.json at %s\n' "$dispatch" >&2
     return 1
@@ -88,25 +74,78 @@ materialize_firstmate_config() {
     :
   else
     mkdir -p "$config_dir" && chmod 700 "$config_dir" || return 1
-  fi
-  if [ -e "$config_dir/crew-dispatch.json" ] || [ -L "$config_dir/crew-dispatch.json" ]; then
-    if [ -f "$config_dir/crew-dispatch.json" ] && [ ! -L "$config_dir/crew-dispatch.json" ] && cmp -s "$dispatch" "$config_dir/crew-dispatch.json"; then
-      :
-    else
-      backup_existing "$config_dir/crew-dispatch.json" || return 1
-      tmp=$(mktemp "$config_dir/crew-dispatch.json.tmp.XXXXXX") || return 1
-      cp -p "$dispatch" "$tmp" || { rm -f "$tmp"; return 1; }
-      mv -f "$tmp" "$config_dir/crew-dispatch.json"
-    fi
-  else
-    tmp=$(mktemp "$config_dir/crew-dispatch.json.tmp.XXXXXX") || return 1
-    cp -p "$dispatch" "$tmp" || { rm -f "$tmp"; return 1; }
-    mv -f "$tmp" "$config_dir/crew-dispatch.json"
+    config_created=1
   fi
   harness=$(resolve_pi_signed)
-  write_config_leaf "$config_dir/backend" 'herdr' || return 1
-  write_config_leaf "$config_dir/crew-harness" "$harness" || return 1
-  write_config_leaf "$config_dir/backlog-backend" 'tasks-axi' || return 1
+  transaction_dir=$(mktemp -d "$config_dir/.firstmate-transaction.XXXXXX") || {
+    [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true
+    return 1
+  }
+  targets=(
+    "$config_dir/crew-dispatch.json"
+    "$config_dir/backend"
+    "$config_dir/crew-harness"
+    "$config_dir/backlog-backend"
+  )
+  staged_paths=(
+    "$transaction_dir/crew-dispatch.json"
+    "$transaction_dir/backend"
+    "$transaction_dir/crew-harness"
+    "$transaction_dir/backlog-backend"
+  )
+  cp -p "$dispatch" "${staged_paths[0]}" || { rm -rf "$transaction_dir"; [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true; return 1; }
+  printf '%s\n' 'herdr' >"${staged_paths[1]}" || { rm -rf "$transaction_dir"; [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true; return 1; }
+  printf '%s\n' "$harness" >"${staged_paths[2]}" || { rm -rf "$transaction_dir"; [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true; return 1; }
+  printf '%s\n' 'tasks-axi' >"${staged_paths[3]}" || { rm -rf "$transaction_dir"; [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true; return 1; }
+  chmod 600 "${staged_paths[1]}" "${staged_paths[2]}" "${staged_paths[3]}" || { rm -rf "$transaction_dir"; [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true; return 1; }
+
+  for i in "${!targets[@]}"; do
+    target=${targets[$i]}
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      if [ -d "$target" ] && [ ! -L "$target" ]; then
+        printf 'firstmate: refusing to replace directory %s\n' "$target" >&2
+        rm -rf "$transaction_dir"
+        [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true
+        return 1
+      fi
+      if [ -f "$target" ] && [ ! -L "$target" ] && cmp -s "${staged_paths[$i]}" "$target"; then
+        continue
+      fi
+    fi
+    changed_indices+=("$i")
+  done
+
+  rollback_materialization() {
+    local j index
+    for ((j=${#installed_indices[@]} - 1; j >= 0; j--)); do
+      index=${installed_indices[$j]}
+      rm -f "${targets[$index]}"
+    done
+    for ((j=${#backup_targets[@]} - 1; j >= 0; j--)); do
+      if [ -e "${backup_paths[$j]}" ] || [ -L "${backup_paths[$j]}" ]; then
+        mv -f "${backup_paths[$j]}" "${backup_targets[$j]}" || true
+      fi
+    done
+    rm -rf "$transaction_dir"
+    [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true
+  }
+
+  for i in "${changed_indices[@]}"; do
+    target=${targets[$i]}
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      backup_existing "$target" || { rollback_materialization; return 1; }
+      backup_targets+=("$target")
+      backup_paths+=("$BACKUP_PATH")
+    fi
+  done
+  for i in "${changed_indices[@]}"; do
+    if ! mv -f "${staged_paths[$i]}" "${targets[$i]}"; then
+      rollback_materialization
+      return 1
+    fi
+    installed_indices+=("$i")
+  done
+  rm -rf "$transaction_dir"
   printf 'firstmate: materialized backend=herdr crew-harness=%s backlog-backend=tasks-axi\n' "$harness"
 }
 
