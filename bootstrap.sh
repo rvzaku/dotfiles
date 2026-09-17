@@ -424,6 +424,14 @@ ensure_apple_container() {
   printf '%s\n' '==> Step 13: Apple Container official installer'
   local container_bin=/usr/local/bin/container
   if [ -x "$container_bin" ]; then
+    check_command pkgutil
+    if ! pkgutil --pkg-info com.apple.container-installer >/dev/null 2>&1 \
+      || ! pkgutil --verify com.apple.container-installer >/dev/null 2>&1 \
+      || ! pkgutil --file-info "$container_bin" 2>/dev/null \
+        | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }'; then
+      printf 'bootstrap: refusing unverified Apple Container binary at %s\n' "$container_bin" >&2
+      return 1
+    fi
     printf '    Apple Container CLI is already installed at %s\n' "$container_bin"
   elif command -v container >/dev/null 2>&1; then
     printf 'bootstrap: refusing Container executable outside Apple installer path %s: %s\n' \
