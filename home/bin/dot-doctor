@@ -114,17 +114,19 @@ if [ -e "$firstmate_home/.git" ]; then
     degraded_check 'pi-signed and pi are unavailable; crew-harness resolution is unproven'
   fi
   check_firstmate_leaf() {
-    local name=$1 expected=$2 actual
+    local name=$1 expected=$2 expected_tmp
     if [ ! -f "$firstmate_config/$name" ] || [ -L "$firstmate_config/$name" ]; then
       fail_check "Firstmate config/$name is missing"
       return
     fi
-    actual=$(cat "$firstmate_config/$name" 2>/dev/null || true)
-    if [ "$actual" = "$expected" ]; then
+    expected_tmp=$(mktemp "${TMPDIR:-/tmp}/dot-doctor-expected.XXXXXX")
+    printf '%s\n' "$expected" >"$expected_tmp"
+    if cmp -s "$expected_tmp" "$firstmate_config/$name"; then
       pass_check "Firstmate config/$name is $expected"
     else
       fail_check "Firstmate config/$name differs (expected $expected)"
     fi
+    rm -f "$expected_tmp"
   }
   check_firstmate_leaf backend herdr
   if [ -n "$expected_harness" ]; then
@@ -214,7 +216,11 @@ if command -v av >/dev/null 2>&1; then
   else
     av_doctor=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-doctor.XXXXXX")
     if av doctor --json >"$av_doctor" 2>/dev/null; then
-      av_doctor_issues=$(jq '[.results[]?.issues[]?] | length' "$av_doctor" 2>/dev/null || printf parse-error)
+      if ! jq -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$av_doctor" >/dev/null 2>&1; then
+        av_doctor_issues=parse-error
+      else
+        av_doctor_issues=$(jq '[.results[].issues[]] | length' "$av_doctor" 2>/dev/null || printf parse-error)
+      fi
       case "$av_doctor_issues" in
         0) pass_check 'Automic Vault doctor reports no unresolved hardening issues' ;;
         ''|*[!0-9]*) fail_check 'Automic Vault doctor output could not be parsed' ;;
@@ -226,7 +232,11 @@ if command -v av >/dev/null 2>&1; then
     rm -f "$av_doctor"
     av_scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX")
     if av scan --json >"$av_scan" 2>/dev/null; then
-      av_blocking=$(jq '[.findings[]? | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
+      if ! jq -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$av_scan" >/dev/null 2>&1; then
+        av_blocking=parse-error
+      else
+        av_blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
+      fi
       case "$av_blocking" in
         ''|*[!0-9]*) fail_check 'Automic Vault scan output could not be parsed' ;;
         0) pass_check 'Automic Vault scan reports no HIGH or CRITICAL findings' ;;

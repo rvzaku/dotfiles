@@ -177,6 +177,9 @@ if [ -e "$settings_target" ] || [ -L "$settings_target" ]; then
   if is_expected_link "$settings_target" "$settings_state" \
     || is_expected_link "$settings_target" "$settings_source"; then
     settings_existing="$settings_target"
+  elif [ -L "$settings_target" ]; then
+    printf 'dotfiles: refusing unexpected symlink at settings path: %s\n' "$settings_target" >&2
+    exit 1
   elif [ -f "$settings_target" ]; then
     if ! "$jq_bin" empty "$settings_target" >/dev/null 2>&1; then
       printf 'dotfiles: refusing to replace invalid JSON settings: %s\n' "$settings_target" >&2
@@ -208,6 +211,8 @@ if [ -n "$settings_existing" ]; then
       if ($a | type) == "object" and ($b | type) == "object" then
         reduce ($b | keys_unsorted[]) as $key
           ($a; .[$key] = if has($key) then deepmerge(.[$key]; $b[$key]) else $b[$key] end)
+      elif ($a | type) == "array" and ($b | type) == "array" then
+        reduce ($b[]) as $item ($a; if any(.[]; . == $item) then . else . + [$item] end)
       else $b end;
     deepmerge(.[0]; .[1])
   ' "$settings_existing" "$settings_source" > "$settings_tmp"

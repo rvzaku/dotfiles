@@ -240,13 +240,13 @@ Calm never changes prompts, tool execution, model context, session data, or orde
 
 Pi's package system declares four third-party sources in the linked global `settings.json`:
 
-- `npm:pi-web-access@0.14.0` - the exact public npm release for web access.
-- `npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6` - the exact public npm release from `ryan_nookpi`.
-- `npm:remote-pi@0.7.0` - the pinned Remote Pi extension and agent-network package.
-- `npm:mitsupi@1.6.0` - the pinned `mitsuhiko/agent-stuff` Pi package (extensions,
+- `npm:pi-web-access` - the web-access package, intentionally unpinned for native updates.
+- `npm:@ryan_nookpi/pi-extension-codex-fast-mode` - the Codex fast-mode package, intentionally unpinned.
+- `npm:remote-pi` - the Remote Pi extension and agent-network package, intentionally unpinned.
+- `npm:mitsupi` - the `mitsuhiko/agent-stuff` Pi package, intentionally unpinned (extensions,
   commands, themes, and skills).
 
-The versions are immutable pins, so Pi does not move them during package updates. Deliberate updates require a new source and security audit, followed by an explicit pin change in `home/.pi/agent/settings.json`. On Pi 0.82.0, global settings declarations install missing pinned packages automatically at startup. No one-time install command is required. Pi keeps the downloaded npm package trees in its own unmanaged `~/.pi/agent/npm` runtime directory, outside Home Manager and Git tracking.
+The package names are intentionally unpinned so Pi's native package update can refresh them during the full update transaction. Deliberate source changes still require a security audit and an explicit edit to `home/.pi/agent/settings.json`. On Pi 0.82.0, global settings declarations install missing packages automatically at startup. No one-time install command is required. Pi keeps the downloaded npm package trees in its own unmanaged `~/.pi/agent/npm` runtime directory, outside Home Manager and Git tracking.
 
 All packages execute with your full user permissions and must be trusted like any other executable code.
 

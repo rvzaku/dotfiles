@@ -49,9 +49,6 @@ resolve_pi_signed() {
       printf '%s\n' 'pi-signed'
       return 0
     fi
-    if [ -n "$PI_SIGNED_BIN" ]; then
-      return 1
-    fi
   fi
   if candidate=$(command -v pi-signed 2>/dev/null) && [ -x "$candidate" ] \
     && "$candidate" --version >/dev/null 2>&1; then
@@ -227,7 +224,7 @@ if [ -z "$branch" ]; then
 fi
 if ! git -C "$repo" show-ref --verify --quiet "$upstream_ref"; then
   printf 'firstmate: Kun upstream branch %s is unavailable; refusing to update\n' "$branch" >&2
-  exit 0
+  exit 1
 fi
 if [ -n "$(git -C "$repo" status --porcelain -- . \
     ':!config/crew-dispatch.json' ':!config/backend' ':!config/crew-harness' \

@@ -29,7 +29,7 @@ printf 'managed extension\n' > "$REPO/home/.pi/agent/extensions/managed.js"
 printf 'public command\n' > "$REPO/home/bin/public-command"
 printf 'private helper\n' > "$REPO/home/bin/private-helper"
 printf '{"theme":"repo","packages":["repo"]}\n' > "$REPO/home/.pi/agent/settings.json"
-printf '{"theme":"old","hooks":{"before":"preserve"},"localOnly":true}\n' \
+printf '{"theme":"old","hooks":{"before":"preserve"},"packages":["local"],"localOnly":true}\n' \
   > "$TEST_HOME/.pi/agent/settings.json"
 printf 'existing Claude settings\n' > "$TEST_HOME/.claude/settings.json"
 printf 'managed Claude settings\n' > "$REPO/home/claude-settings"
@@ -78,6 +78,8 @@ ln -s "$REPO/home/bin/public-command" "$TEST_HOME/.local/bin/public-command"
   || fail "Pi hooks were not preserved"
 [ "$(jq -r '.theme' "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json")" = repo ] \
   || fail "managed Pi settings did not win"
+[ "$(jq -r '[.packages[]] | sort | join(",")' "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json")" = 'local,repo' ] \
+  || fail "Pi package declarations were not merged additively"
 
 backup_root=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager" \
   -mindepth 1 -maxdepth 1 -type d -print -quit)
@@ -86,7 +88,7 @@ backup_root=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager" \
 [ -L "$backup_root/directories/.pi/agent/extensions" ] || fail "old extension link was not backed up"
 [ -L "$backup_root/directories/.local/bin" ] || fail "old bin directory link was not backed up"
 [ "$(cat "$backup_root/files/.pi/agent/settings.json")" = \
-  '{"theme":"old","hooks":{"before":"preserve"},"localOnly":true}' ] \
+  '{"theme":"old","hooks":{"before":"preserve"},"packages":["local"],"localOnly":true}' ] \
   || fail "Pi settings backup was not byte-preserving"
 [ "$(cat "$backup_root/files/.claude/settings.json")" = 'existing Claude settings' ] \
   || fail "Claude settings backup was not byte-preserving"

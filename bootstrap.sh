@@ -157,7 +157,12 @@ verify_av() {
     printf '%s\n' 'bootstrap: Automic Vault doctor failed; refusing to continue credential setup' >&2
     return 1
   fi
-  issues=$(jq '[.results[]?.issues[]?] | length' "$report" 2>/dev/null || printf invalid)
+  if ! jq -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$report" >/dev/null 2>&1; then
+    rm -f "$report"
+    printf '%s\n' 'bootstrap: Automic Vault doctor output could not be parsed' >&2
+    return 1
+  fi
+  issues=$(jq '[.results[].issues[]] | length' "$report" 2>/dev/null || printf invalid)
   rm -f "$report"
   case "$issues" in
     0) ;;
@@ -192,18 +197,36 @@ ensure_ssh_identity() {
     printf '%s\n' '    no Ed25519 identity found; create one and choose a passphrase when prompted'
     ssh-keygen -t ed25519 -f "$private" -C "${USER:-$(id -un)}@github.com"
   fi
-  if [ ! -f "$public" ]; then
-    ssh-keygen -y -f "$private" >"$public"
-    chmod 644 "$public"
+  check_command ssh-keygen
+  local derived_public key_type existing_public public_tmp
+  derived_public=$(ssh-keygen -y -f "$private" 2>/dev/null) || {
+    printf '%s\n' 'bootstrap: existing Ed25519 private key could not be read' >&2
+    return 1
+  }
+  key_type=$(printf '%s\n' "$derived_public" | awk '{print $1}')
+  if [ "$key_type" != ssh-ed25519 ]; then
+    printf 'bootstrap: refusing non-Ed25519 SSH private key (%s)\n' "${key_type:-unknown}" >&2
+    return 1
+  fi
+  existing_public=''
+  if [ -e "$public" ] || [ -L "$public" ]; then
+    [ -f "$public" ] || { printf '%s\n' 'bootstrap: SSH public-key path is not a regular file' >&2; return 1; }
+    existing_public=$(awk 'NF >= 2 { print $1 " " $2; exit }' "$public")
+  fi
+  if [ "$existing_public" != "$(printf '%s\n' "$derived_public" | awk '{print $1 " " $2}')" ]; then
+    public_tmp=$(mktemp "$ssh_dir/.id_ed25519.pub.XXXXXX") || return 1
+    printf '%s\n' "$derived_public" >"$public_tmp"
+    chmod 644 "$public_tmp"
+    mv -f "$public_tmp" "$public"
   fi
   check_command gh
   local key_line title api_keys
-  key_line="$(cat "$public")"
+  key_line=$(printf '%s\n' "$derived_public" | awk '{print $1 " " $2}')
   api_keys=$(gh api user/keys --jq '.[].key') || {
     printf '%s\n' 'bootstrap: GitHub public-key API access failed; refusing to guess whether the key is registered' >&2
     return 1
   }
-  if printf '%s\n' "$api_keys" | grep -F -x -- "$key_line" >/dev/null 2>&1; then
+  if printf '%s\n' "$api_keys" | awk 'NF >= 2 { print $1 " " $2 }' | grep -F -x -- "$key_line" >/dev/null 2>&1; then
     printf '%s\n' '    Ed25519 public key is already registered with GitHub'
   else
     title="dotfiles-$(hostname -s 2>/dev/null || printf mac)-$(date -u +%Y%m%d)"
@@ -262,7 +285,12 @@ managed_security_gate() {
   printf '%s\n' '==> Step 10: managed security gate'
   local report="${TMPDIR:-/tmp}/bootstrap-av-scan.$$.json" blocking
   av scan --json >"$report"
-  blocking=$(jq '[.findings[]? | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$report")
+  if ! jq -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$report" >/dev/null 2>&1; then
+    rm -f "$report"
+    printf '%s\n' 'bootstrap: Automic Vault scan output could not be parsed' >&2
+    return 1
+  fi
+  blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$report")
   rm -f "$report"
   case "$blocking" in
     ''|*[!0-9]*) printf '%s\n' 'bootstrap: Automic Vault scan output could not be parsed' >&2; return 1 ;;
