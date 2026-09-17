@@ -211,10 +211,10 @@ let
   targetIsExistingSymlink = target:
     let
       evaluationHome = builtins.getEnv "DOTFILES_HOME";
-      result = if evaluationHome == ""
-        then { success = false; value = null; }
-        else builtins.tryEval (builtins.readFileType "${homeDirectory}/${target}");
-    in result.success && result.value == "symlink";
+      targetPath = "${homeDirectory}/${target}";
+    in evaluationHome != ""
+      && builtins.pathExists targetPath
+      && builtins.readFileType targetPath == "symlink";
 
   managedPairs =
     explicitPairs ++ publicBinPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
