@@ -70,11 +70,12 @@ pins GitHub's published host keys from `gh api meta` before probing with
 Keychain/SSH agent and is never written to Git or Nix. `dot-doctor` is
 read-only and reports missing identity state.
 
-Bootstrap and rebuild materialize Firstmate's `config/backend`,
+Bootstrap and update-firstmate materialize Firstmate's `config/backend`,
 `config/crew-harness`, `config/backlog-backend`, and authored
-`config/crew-dispatch.json` atomically and idempotently. Existing differing
-files are moved to the Firstmate state backup directory before replacement;
-runtime config remains outside Git.
+`config/crew-dispatch.json` atomically and idempotently. `rebuild.sh` only
+applies the current locked Darwin state. Existing differing files are moved to
+the Firstmate state backup directory before replacement; runtime config remains
+outside Git.
 
 Apple Container is installed only by bootstrap's official signed release path:
 the latest `.pkg` is fetched from `apple/container`, signature-checked with
@@ -109,7 +110,7 @@ commit/hash below only as part of a reviewed release:
 
 ```sh
 /usr/bin/curl --proto '=https' --tlsv1.2 -fsSLo /tmp/dotfiles-bootstrap.sh \
-  https://raw.githubusercontent.com/rvzaku/dotfiles/ae39aa09b1499e1fdd73184a75a2346a8aa4c07a/bootstrap.sh
+  https://raw.githubusercontent.com/rvzaku/dotfiles/2dbd65a3bd7a4f0074115fd709028076646e2184/bootstrap.sh
 printf '%s  %s\n' '3fe574758e99750beaf6fa4d62324656a151a890186a8a5f1bc48eaee025dd15' /tmp/dotfiles-bootstrap.sh | /usr/bin/shasum -a 256 -c -
 /bin/bash /tmp/dotfiles-bootstrap.sh --from-scratch
 ```

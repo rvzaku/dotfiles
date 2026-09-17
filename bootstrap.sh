@@ -247,7 +247,19 @@ ensure_ssh_identity() {
   known_hosts="$ssh_dir/known_hosts"
   known_tmp=$(mktemp "$known_hosts.tmp.XXXXXX") || { rm -f "$meta"; return 1; }
   if [ -f "$known_hosts" ]; then
-    awk 'BEGIN { OFS=" " } { n=split($1, hosts, ","); keep=1; for (i=1; i<=n; i++) if (hosts[i] == "github.com" || hosts[i] == "[github.com]:22") keep=0; if (keep) print }' "$known_hosts" >"$known_tmp"
+    local github_matches="${known_hosts}.matches"
+    ssh-keygen -F github.com -f "$known_hosts" 2>/dev/null | sed '/^#/d' >"$github_matches" || true
+    awk -v matches="$github_matches" '
+      BEGIN { while ((getline line < matches) > 0) remove[line]=1; close(matches) }
+      {
+        if ($0 in remove) next
+        host_field = (substr($1, 1, 1) == "@") ? $2 : $1
+        n = split(host_field, hosts, ",")
+        for (i = 1; i <= n; i++) if (hosts[i] == "github.com" || hosts[i] == "[github.com]:22") next
+        print
+      }
+    ' "$known_hosts" >"$known_tmp"
+    rm -f "$github_matches"
   fi
   while IFS= read -r host_key; do
     if ! grep -F -x "github.com $host_key" "$known_tmp" >/dev/null 2>&1; then

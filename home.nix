@@ -429,7 +429,6 @@ in
       py = "agent-pi-yolo";
       backpass-learn = "backpass --scope user --strict";
       backpass-apply = "backpass-apply-qualified";
-      doctor = "dot-doctor";
     };
   };
 

@@ -253,7 +253,7 @@ if command -v av >/dev/null 2>&1; then
     rm -f "$av_scan"
   fi
 else
-  degraded_check 'Automic Vault CLI is unavailable; managed security status is unproven'
+  fail_check 'Automic Vault CLI is unavailable; managed security status is unproven'
 fi
 
 # AV treats writable directories ahead of trusted system/package-manager bins

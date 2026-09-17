@@ -19,6 +19,36 @@ script_dir=$(resolve_script_dir)
 dotfiles_root=${DOTFILES_ROOT:-$(cd "$script_dir/../.." && pwd -P)}
 backup_base="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/firstmate"
 
+BACKUP_JOURNAL=
+
+recover_transaction() {
+  local transaction_dir=$1 journal="$transaction_dir/journal" kind target backup
+  local -a backup_targets=() backup_paths=()
+  [ -f "$journal" ] || { rm -rf "$transaction_dir"; return 0; }
+  while IFS=$'\t' read -r kind target backup; do
+    case "$kind" in
+      install) rm -f -- "$target" ;;
+      backup) backup_targets+=("$target"); backup_paths+=("$backup") ;;
+    esac
+  done <"$journal"
+  local i
+  for ((i=${#backup_targets[@]} - 1; i >= 0; i--)); do
+    if [ -e "${backup_paths[$i]}" ] || [ -L "${backup_paths[$i]}" ]; then
+      mv -f -- "${backup_paths[$i]}" "${backup_targets[$i]}" || return 1
+    fi
+  done
+  rm -rf "$transaction_dir"
+}
+
+recover_orphaned_transactions() {
+  local config_dir=$1 transaction_dir
+  for transaction_dir in "$config_dir"/.firstmate-transaction.*; do
+    [ -d "$transaction_dir" ] || continue
+    printf 'firstmate: recovering interrupted transaction %s\n' "$transaction_dir" >&2
+    recover_transaction "$transaction_dir" || return 1
+  done
+}
+
 backup_existing() {
   local target=$1 candidate stamp counter=0 destination
   BACKUP_PATH=
@@ -30,6 +60,10 @@ backup_existing() {
     [ "$counter" -eq 0 ] || candidate="$candidate-$counter"
     if mkdir "$candidate" 2>/dev/null; then
       destination="$candidate/$(basename "$target")"
+      if [ -n "$BACKUP_JOURNAL" ] && ! printf 'backup\t%s\t%s\n' "$target" "$destination" >>"$BACKUP_JOURNAL"; then
+        rmdir "$candidate" 2>/dev/null || true
+        return 1
+      fi
       if mv "$target" "$destination"; then
         BACKUP_PATH=$destination
         printf 'firstmate: backed up %s to %s\n' "$target" "$destination"
@@ -76,7 +110,7 @@ resolve_pi_signed() {
 
 materialize_firstmate_config() {
   local config_dir="$repo/config" dispatch="$dotfiles_root/home/.config/firstmate/crew-dispatch.json"
-  local harness transaction_dir config_created=0 target i harness_available=1
+  local harness transaction_dir journal config_created=0 target i harness_available=1
   local -a targets staged_paths changed_indices backup_targets backup_paths installed_indices
   changed_indices=()
   backup_targets=()
@@ -101,7 +135,7 @@ materialize_firstmate_config() {
     return 1
   fi
   if [ -d "$config_dir" ]; then
-    :
+    recover_orphaned_transactions "$config_dir" || return 1
   else
     mkdir -p "$config_dir" && chmod 700 "$config_dir" || return 1
     config_created=1
@@ -115,6 +149,15 @@ materialize_firstmate_config() {
     [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true
     return 1
   }
+  journal="$transaction_dir/journal"
+  : >"$journal" || { rm -rf "$transaction_dir"; [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true; return 1; }
+  BACKUP_JOURNAL="$journal"
+  rollback_materialization() {
+    trap - HUP INT TERM
+    recover_transaction "$transaction_dir"
+    BACKUP_JOURNAL=
+  }
+  trap 'rollback_materialization; exit 1' HUP INT TERM
   targets=(
     "$config_dir/crew-dispatch.json"
     "$config_dir/backend"
@@ -157,21 +200,6 @@ materialize_firstmate_config() {
     changed_indices+=("$i")
   done
 
-  rollback_materialization() {
-    local j index
-    for ((j=${#installed_indices[@]} - 1; j >= 0; j--)); do
-      index=${installed_indices[$j]}
-      rm -f "${targets[$index]}"
-    done
-    for ((j=${#backup_targets[@]} - 1; j >= 0; j--)); do
-      if [ -e "${backup_paths[$j]}" ] || [ -L "${backup_paths[$j]}" ]; then
-        mv -f "${backup_paths[$j]}" "${backup_targets[$j]}" || true
-      fi
-    done
-    rm -rf "$transaction_dir"
-    [ "$config_created" -eq 0 ] || rmdir "$config_dir" 2>/dev/null || true
-  }
-
   if ((${#changed_indices[@]} > 0)); then
     for i in "${changed_indices[@]}"; do
       target=${targets[$i]}
@@ -184,6 +212,10 @@ materialize_firstmate_config() {
   fi
   if ((${#changed_indices[@]} > 0)); then
     for i in "${changed_indices[@]}"; do
+      if ! printf 'install\t%s\n' "${targets[$i]}" >>"$journal"; then
+        rollback_materialization
+        return 1
+      fi
       if ! mv -f "${staged_paths[$i]}" "${targets[$i]}"; then
         rollback_materialization
         return 1
@@ -191,7 +223,12 @@ materialize_firstmate_config() {
       installed_indices+=("$i")
     done
   fi
-  rm -rf "$transaction_dir"
+  trap - HUP INT TERM
+  BACKUP_JOURNAL=
+  if ! rm -rf "$transaction_dir"; then
+    printf 'firstmate: could not remove transaction journal %s\n' "$transaction_dir" >&2
+    return 1
+  fi
   if [ "$harness_available" -eq 1 ]; then
     printf 'firstmate: materialized backend=herdr crew-harness=%s backlog-backend=tasks-axi\n' "$harness"
   else

@@ -50,7 +50,7 @@ recorded SHA-256, and let it install CLT before obtaining the public checkout:
 
 ```sh
 /usr/bin/curl --proto '=https' --tlsv1.2 -fsSLo /tmp/dotfiles-bootstrap.sh \
-  https://raw.githubusercontent.com/rvzaku/dotfiles/ae39aa09b1499e1fdd73184a75a2346a8aa4c07a/bootstrap.sh
+  https://raw.githubusercontent.com/rvzaku/dotfiles/2dbd65a3bd7a4f0074115fd709028076646e2184/bootstrap.sh
 printf '%s  %s\n' '3fe574758e99750beaf6fa4d62324656a151a890186a8a5f1bc48eaee025dd15' /tmp/dotfiles-bootstrap.sh | /usr/bin/shasum -a 256 -c -
 /bin/bash /tmp/dotfiles-bootstrap.sh --from-scratch
 ```
