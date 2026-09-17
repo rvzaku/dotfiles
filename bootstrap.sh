@@ -361,7 +361,17 @@ managed_security_gate() {
     0) printf '%s\n' '    Automic Vault reports no unresolved HIGH or CRITICAL findings' ;;
     *)
       printf 'bootstrap: Automic Vault reports %s unresolved HIGH/CRITICAL finding(s); managed security is not complete\n' "$blocking" >&2
-      jq -r '.findings[]? | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical") | "  AV scan: " + ((.id // .detector // "finding")|tostring) + " [" + .severity + "] - " + ((.description // .message // "remediation required")|tostring)' "$report" >&2 || true
+      jq -r '
+        .findings[]?
+        | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical")
+        | ([(.affected[]?.path // empty)] | join(", ")) as $affected
+        | (if $affected == "" then "not reported" else $affected end) as $where
+        | "  AV scan: source=" + ((.source // ((.detectors // []) | join(",")) // "unknown")|tostring)
+          + " affected=" + $where + " [" + .severity + "]\n"
+          + "      Explanation: " + ((.explanation // .description // .message // "not supplied")|tostring) + "\n"
+          + "      Remediation: " + ((.solution // .remediation // "follow the AV detector guidance")|tostring) + "\n"
+          + "      Bootstrap step: apply this remediation, then rerun ./bootstrap.sh"
+      ' "$report" >&2 || true
       rm -f "$report"
       return 1
       ;;

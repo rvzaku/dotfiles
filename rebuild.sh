@@ -41,7 +41,17 @@ verify_av() {
   blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$scan")
   if [ "$blocking" -ne 0 ]; then
     printf 'rebuild: Automic Vault scan reports %s unresolved HIGH/CRITICAL finding(s); rerun bootstrap.sh to apply the required AV hardening\n' "$blocking" >&2
-    jq -r '.findings[]? | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical") | "  AV scan: " + ((.id // .detector // "finding")|tostring) + " [" + .severity + "] - " + ((.description // .message // "remediation required")|tostring)' "$scan" >&2 || true
+    jq -r '
+      .findings[]?
+      | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical")
+      | ([(.affected[]?.path // empty)] | join(", ")) as $affected
+      | (if $affected == "" then "not reported" else $affected end) as $where
+      | "  AV scan: source=" + ((.source // ((.detectors // []) | join(",")) // "unknown")|tostring)
+        + " affected=" + $where + " [" + .severity + "]\n"
+        + "      Explanation: " + ((.explanation // .description // .message // "not supplied")|tostring) + "\n"
+        + "      Remediation: " + ((.solution // .remediation // "follow the AV detector guidance")|tostring) + "\n"
+        + "      Bootstrap step: apply this remediation, then rerun ./bootstrap.sh"
+    ' "$scan" >&2 || true
     rm -f "$scan"
     return 1
   fi

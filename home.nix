@@ -446,6 +446,10 @@ in
     syntaxHighlighting.enable = true;
     initContent = ''
       bindkey '^f' autosuggest-accept
+      # Reassert mutable npm ownership even when a parent shell exported
+      # Home Manager's session guard before this login shell started.
+      export NPM_CONFIG_PREFIX="$HOME/.local/npm"
+      export PNPM_HOME="$HOME/.local/share/pnpm"
       typeset -a _dotfiles_path_tail=()
       for _dotfiles_entry in ''${(s.:.)PATH}; do
         case "$_dotfiles_entry" in
@@ -468,7 +472,6 @@ in
       oc = "agent-opencode-yolo";
       gp = "agent-grok-yolo";
       py = "agent-pi-yolo";
-      backpass-learn = "backpass --scope user --strict";
     };
   };
 
