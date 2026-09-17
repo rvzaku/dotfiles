@@ -6,11 +6,32 @@ set -euo pipefail
 
 source=${1:?authored Claude settings source is required}
 target=${2:?Claude user settings target is required}
+backup_base="${DOTFILES_BACKUP_BASE:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/home-manager}"
+
+backup_predecessor() {
+  local stamp destination backup_root
+  mkdir -p "$backup_base"
+  stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+  backup_root="$backup_base/$stamp-$$"
+  while ! mkdir "$backup_root" 2>/dev/null; do
+    stamp="$(date -u '+%Y%m%dT%H%M%SZ')-$RANDOM"
+    backup_root="$backup_base/$stamp-$$"
+  done
+  destination="$backup_root/files/.claude/settings.json"
+  mkdir -p "$(dirname "$destination")"
+  mv "$target" "$destination"
+  printf 'dotfiles: backed up predecessor Claude settings link to %s\n' "$destination" >&2
+}
 
 mkdir -p "$(dirname "$target")"
 if [ -L "$target" ]; then
   link=$(readlink "$target" || true)
   case "$link" in
+    /nix/store/*-home-manager-files/*)
+      backup_predecessor
+      cp -p "$source" "$target"
+      printf 'dotfiles: seeded writable Claude user settings from the authored base at %s\n' "$target" >&2
+      ;;
     "$source"|*/home/.claude/settings.json)
       tmp=$(mktemp "${target}.migration.XXXXXX")
       if ! cp -p "$target" "$tmp"; then

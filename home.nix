@@ -208,22 +208,33 @@ let
     }
   ];
 
+  targetIsExistingSymlink = target:
+    let
+      evaluationHome = builtins.getEnv "DOTFILES_HOME";
+      result = if evaluationHome == ""
+        then { success = false; value = null; }
+        else builtins.tryEval (builtins.readFileType "${homeDirectory}/${target}");
+    in result.success && result.value == "symlink";
+
   managedPairs =
     explicitPairs ++ publicBinPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
 
-  managedFiles =
-    (lib.foldl' (acc: root: acc // directoryLinks root.source root.target) { } directoryRoots)
-    // lib.listToAttrs (
-      map ({ source, target }: {
-        name = target;
-        value = fileLink source;
-      }) (explicitPairs ++ publicBinPairs)
-    )
-    // {
-      ".pi/agent/settings.json" = {
-        source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
-      };
+  # Existing symlinks are handled by prepare-managed-paths: known Home
+  # Manager generations are backed up and relinked, while unknown links are
+  # preserved and omitted from this generation so one collision cannot abort
+  # unrelated convergence.
+  convergedPairs = lib.filter (pair: !(targetIsExistingSymlink pair.target)) managedPairs;
+
+  managedFiles = lib.listToAttrs (
+    map ({ source, target }: {
+      name = target;
+      value = fileLink source;
+    }) convergedPairs
+  ) // lib.optionalAttrs (!(targetIsExistingSymlink ".pi/agent/settings.json")) {
+    ".pi/agent/settings.json" = {
+      source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
     };
+  };
 in
 {
   home.username = user;

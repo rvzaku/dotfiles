@@ -82,6 +82,32 @@ backup_target() {
 # A link to the checkout, the composed Pi state, or a previous Home Manager
 # generation already has a recoverable source.  Do not move those links or
 # accidentally turn a path inside a linked directory into a repository edit.
+resolved_link_target() {
+  local target=$1 link_target directory basename
+  link_target=$(readlink "$target" 2>/dev/null || true)
+  case "$link_target" in
+    /*) ;;
+    *) link_target="$(dirname "$target")/$link_target" ;;
+  esac
+  directory=$(dirname "$link_target")
+  basename=$(basename "$link_target")
+  if [ -d "$directory" ]; then
+    directory=$(cd -P "$directory" && pwd -P)
+    link_target="$directory/$basename"
+  fi
+  printf '%s\n' "$link_target"
+}
+
+is_home_manager_generation_link() {
+  local target=$1 link_target
+  [ -L "$target" ] || return 1
+  link_target=$(resolved_link_target "$target")
+  case "$link_target" in
+    /nix/store/*-home-manager-files/*) return 0 ;;
+  esac
+  return 1
+}
+
 is_expected_link() {
   local target=$1 expected=$2 link_target hm_files_root
   [ -L "$target" ] || return 1
@@ -209,13 +235,18 @@ done < "$manifest"
 mkdir -p "$(dirname "$settings_state")"
 settings_existing=''
 settings_should_backup=false
+settings_skip=false
+settings_relink=false
 if [ -e "$settings_target" ] || [ -L "$settings_target" ]; then
   if is_expected_link "$settings_target" "$settings_state" \
     || is_expected_link "$settings_target" "$settings_source"; then
     settings_existing="$settings_target"
+  elif is_home_manager_generation_link "$settings_target"; then
+    backup_target "$settings_target" '.pi/agent/settings.json'
+    settings_relink=true
   elif [ -L "$settings_target" ]; then
-    printf 'dotfiles: refusing unexpected symlink at settings path: %s\n' "$settings_target" >&2
-    exit 1
+    printf 'dotfiles: preserving unexpected symlink at settings path and skipping it: %s\n' "$settings_target" >&2
+    settings_skip=true
   elif [ -f "$settings_target" ]; then
     if ! "$jq_bin" empty "$settings_target" >/dev/null 2>&1; then
       printf 'dotfiles: refusing to replace invalid JSON settings: %s\n' "$settings_target" >&2
@@ -235,7 +266,9 @@ cleanup_settings_tmp() {
   rm -f "$settings_tmp"
 }
 trap cleanup_settings_tmp EXIT
-if [ -n "$settings_existing" ]; then
+if [ "$settings_skip" = true ]; then
+  printf '%s\n' 'dotfiles: degraded ownership; Pi settings target was preserved and skipped for this activation' >&2
+elif [ -n "$settings_existing" ]; then
   if ! "$jq_bin" empty "$settings_existing" >/dev/null 2>&1; then
     printf 'dotfiles: refusing to compose invalid JSON settings: %s\n' "$settings_existing" >&2
     exit 1
@@ -255,10 +288,18 @@ if [ -n "$settings_existing" ]; then
 else
   "$jq_bin" . "$settings_source" > "$settings_tmp"
 fi
-if [ "$settings_should_backup" = true ]; then
+if [ "$settings_skip" = false ] && [ "$settings_should_backup" = true ]; then
   backup_target "$settings_target" '.pi/agent/settings.json'
 fi
-mv -f "$settings_tmp" "$settings_state"
+if [ "$settings_skip" = false ]; then
+  mv -f "$settings_tmp" "$settings_state"
+else
+  rm -f "$settings_tmp"
+fi
+if [ "$settings_relink" = true ]; then
+  ln -s "$settings_state" "$settings_target"
+  printf 'dotfiles: migrated Home Manager predecessor Pi settings link\n' >&2
+fi
 trap - EXIT
 
 while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_path; do
@@ -267,7 +308,15 @@ while IFS= read -r -d '' target_relative && IFS= read -r -d '' source_path; do
     if is_expected_link "$target" "$source_path"; then
       continue
     fi
-    backup_target "$target" "$target_relative"
+    if is_home_manager_generation_link "$target"; then
+      backup_target "$target" "$target_relative"
+      ln -s "$source_path" "$target"
+      printf 'dotfiles: migrated Home Manager predecessor link %s\n' "$target" >&2
+    elif [ -L "$target" ]; then
+      printf 'dotfiles: preserving unexpected symlink and skipping managed path: %s\n' "$target" >&2
+    else
+      backup_target "$target" "$target_relative"
+    fi
   fi
 done < "$manifest"
 

@@ -34,6 +34,12 @@ printf '{"theme":"old","hooks":{"before":"preserve"},"packages":["local"],"local
   > "$TEST_HOME/.pi/agent/settings.json"
 printf 'existing Claude settings\n' > "$TEST_HOME/.claude/settings.json"
 printf 'managed Claude settings\n' > "$REPO/home/claude-settings"
+printf 'store predecessor\n' > "$REPO/home/store-predecessor"
+printf 'unknown symlink source\n' > "$REPO/home/unknown-symlink-source"
+printf 'unknown target\n' > "$TMP_ROOT/unknown-target"
+ln -s "/nix/store/abc-home-manager-files/codex-settings" \
+  "$TEST_HOME/.codex/legacy-settings"
+ln -s "$TMP_ROOT/unknown-target" "$TEST_HOME/.claude/unknown-settings"
 
 # Model the old whole-directory links that caused the original collision.
 ln -s "$REPO/home/.agents/skills" "$TEST_HOME/.agents/skills"
@@ -49,6 +55,8 @@ directories="$TMP_ROOT/directories0"
   printf '%s\0%s\0' '.pi/agent/extensions/managed.js' \
     "$REPO/home/.pi/agent/extensions/managed.js"
   printf '%s\0%s\0' '.claude/settings.json' "$REPO/home/claude-settings"
+  printf '%s\0%s\0' '.codex/legacy-settings' "$REPO/home/store-predecessor"
+  printf '%s\0%s\0' '.claude/unknown-settings' "$REPO/home/unknown-symlink-source"
   printf '%s\0%s\0' '.local/bin/public-command' "$REPO/home/bin/public-command"
 } > "$manifest"
 {
@@ -59,15 +67,16 @@ directories="$TMP_ROOT/directories0"
   printf '%s\0%s\0' '.local/bin' "$REPO/home/bin"
 } > "$directories"
 
-HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
+managed_output=$(HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
   bash "$ROOT/home/bin/prepare-managed-paths" \
   --manifest0 "$manifest" \
   --directories0 "$directories" \
   --settings-source "$REPO/home/.pi/agent/settings.json" \
   --settings-state "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json" \
   --settings-target "$TEST_HOME/.pi/agent/settings.json" \
-  --jq "$(command -v jq)" >/dev/null
-
+  --jq "$(command -v jq)" 2>&1)
+assert_contains "$managed_output" 'preserving unexpected symlink and skipping managed path' \
+  'unknown symlink collision was not reported as degraded'
 [ -d "$TEST_HOME/.agents/skills" ] || fail "skills directory was not restored as a real directory"
 [ ! -L "$TEST_HOME/.agents/skills" ] || fail "skills directory is still a whole-directory link"
 [ -f "$TEST_HOME/.agents/skills/source-only.md" ] || fail "source-only skill was lost"
@@ -96,11 +105,35 @@ backup_root=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager" \
 [ -L "$backup_root/directories/.agents/skills" ] || fail "old directory link was not backed up"
 [ -L "$backup_root/directories/.pi/agent/extensions" ] || fail "old extension link was not backed up"
 [ -L "$backup_root/directories/.local/bin" ] || fail "old bin directory link was not backed up"
+[ -L "$backup_root/files/.codex/legacy-settings" ] || fail "store-shaped Home Manager predecessor was not backed up"
+[ -L "$TEST_HOME/.claude/unknown-settings" ] || fail "unknown symlink collision was not preserved"
+[ "$(readlink "$TEST_HOME/.claude/unknown-settings")" = "$TMP_ROOT/unknown-target" ] || fail "unknown symlink target changed"
 [ "$(cat "$backup_root/files/.pi/agent/settings.json")" = \
   '{"theme":"old","hooks":{"before":"preserve"},"packages":["local"],"localOnly":true}' ] \
   || fail "Pi settings backup was not byte-preserving"
 [ "$(cat "$backup_root/files/.claude/settings.json")" = 'existing Claude settings' ] \
   || fail "Claude settings backup was not byte-preserving"
+
+# Claude's standalone writable settings helper handles the same predecessor
+# and unknown-symlink boundaries without touching the authored source.
+claude_home="$TMP_ROOT/claude-home"
+claude_target="$claude_home/.claude/settings.json"
+claude_backups="$TMP_ROOT/claude-backups"
+mkdir -p "$claude_home/.claude"
+ln -s /nix/store/abc-home-manager-files/claude-settings "$claude_target"
+claude_output=$(HOME="$claude_home" DOTFILES_BACKUP_BASE="$claude_backups" \
+  bash "$ROOT/home/bin/prepare-claude-settings" "$REPO/home/claude-settings" "$claude_target" 2>&1)
+claude_backup=$(find "$claude_backups" -path '*/files/.claude/settings.json' -print -quit)
+[ -L "$claude_backup" ] || fail "Claude store-shaped predecessor was not backed up"
+[ ! -L "$claude_target" ] || fail "Claude predecessor was not migrated to writable settings"
+[ "$(cat "$claude_target")" = 'managed Claude settings' ] || fail "Claude settings seed was incorrect"
+rm -f "$claude_target"
+ln -s "$TMP_ROOT/unknown-target" "$claude_target"
+claude_output=$(HOME="$claude_home" DOTFILES_BACKUP_BASE="$claude_backups" \
+  bash "$ROOT/home/bin/prepare-claude-settings" "$REPO/home/claude-settings" "$claude_target" 2>&1)
+assert_contains "$claude_output" 'preserving unknown Claude settings link' \
+  'Claude unknown symlink collision was not reported'
+[ -L "$claude_target" ] || fail "Claude unknown symlink collision was not preserved"
 
 # Complete the link phase and prove a rerun does not create a second backup or
 # overwrite the first one.
