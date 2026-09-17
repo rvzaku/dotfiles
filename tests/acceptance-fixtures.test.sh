@@ -83,11 +83,9 @@ test_brew_zap_inventory_fixture() {
   assert_contains "$output" 'undeclared-cask' 'zap warning omitted cask inventory'
   assert_contains "$output" 'third-party/tap' 'zap warning omitted tap inventory'
   pass 'Brew zap inventory fixture warns before a stubbed switch'
-  assert_contains "$output" 'third-party/tap' 'zap warning omitted tap inventory'
   printf '%s\n' own >"$fixture_root/home/.config/dotfiles/machine-role"
   assert_contains "$(cat "$ROOT/configuration.nix")" 'onActivation.cleanup = "zap"' \
     'configuration softened Homebrew cleanup away from zap'
-  printf '%s\n' own >"$fixture_root/home/.config/dotfiles/machine-role"
   PATH="$fixture_root/bin:/usr/bin:/bin" DOTFILES_ROOT="$ROOT" HOME="$fixture_root/home" \
     "$ROOT/home/bin/apply-darwin" >/dev/null 2>&1 \
     || fail 'own-machine marker did not permit the declared zap path'

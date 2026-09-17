@@ -58,10 +58,36 @@ warn_homebrew_inventory() {
     printf '%s\n' 'dotfiles: Homebrew is not installed yet; declared inventory will be applied by nix-darwin.' >&2
     return 0
   fi
-  printf '%s\n' 'dotfiles: current Homebrew inventory (undeclared items may be removed by zap):' >&2
-  printf '  formulae: %s\n' "$(brew list --formula 2>/dev/null | tr '\n' ' ')" >&2
-  printf '  casks: %s\n' "$(brew list --cask 2>/dev/null | tr '\n' ' ')" >&2
-  printf '  taps: %s\n' "$(brew tap 2>/dev/null | tr '\n' ' ')" >&2
+  if ! command -v nix >/dev/null 2>&1; then
+    printf '%s\n' 'dotfiles: cannot compute the exact zap removal inventory (nix missing); refusing activation' >&2
+    return 1
+  fi
+  local config_ref="${ROOT}#darwinConfigurations.${DOTFILES_HOST}.config.homebrew" item
+  local declared_formulae declared_casks declared_taps formulae casks taps
+  declared_formulae=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" (map (x: x.name) xs)' "$config_ref.brews" 2>/dev/null) || return 1
+  declared_casks=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" (map (x: x.name) xs)' "$config_ref.casks" 2>/dev/null) || return 1
+  declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply 'xs: builtins.concatStringsSep "\n" (map (x: x.name) xs)' "$config_ref.taps" 2>/dev/null) || return 1
+  formulae=$(brew list --formula 2>/dev/null || true)
+  casks=$(brew list --cask 2>/dev/null || true)
+  taps=$(brew tap 2>/dev/null || true)
+  printf '%s\n' 'dotfiles: exact Homebrew inventory before zap (undeclared entries below would be removed):' >&2
+  printf '  formulae: %s\n' "$(printf '%s\n' "$formulae" | tr '\n' ' ')" >&2
+  printf '  casks: %s\n' "$(printf '%s\n' "$casks" | tr '\n' ' ')" >&2
+  printf '  taps: %s\n' "$(printf '%s\n' "$taps" | tr '\n' ' ')" >&2
+  printf '  formulae to remove: ' >&2
+  for item in $formulae; do
+    grep -Fxq "$item" <<<"$declared_formulae" || printf '%s ' "$item" >&2
+  done
+  printf '\n' >&2
+  printf '  casks to remove: ' >&2
+  for item in $casks; do
+    grep -Fxq "$item" <<<"$declared_casks" || printf '%s ' "$item" >&2
+  done
+  printf '\n  taps to remove: ' >&2
+  for item in $taps; do
+    grep -Fxq "$item" <<<"$declared_taps" || printf '%s ' "$item" >&2
+  done
+  printf '\n' >&2
 }
 
 warn_homebrew_cleanup() {
