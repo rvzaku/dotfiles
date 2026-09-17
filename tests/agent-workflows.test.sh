@@ -390,7 +390,8 @@ SCRIPT
 }
 
 test_backup_prune_transaction() {
-  local backup_dir="$TMP_ROOT/transaction-backups" output
+  local backup_dir="$TMP_ROOT/transaction-backups" output update_script
+  update_script=$(make_agent_tools_fixture)
   mkdir -p "$backup_dir/old"
   touch -t 202001010000 "$backup_dir/old"
   cat >"$FAKE/update-firstmate" <<'SCRIPT'
@@ -402,7 +403,7 @@ SCRIPT
   set +e
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$TMP_ROOT/failure.log" \
     PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
-    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+    PATH="$FAKE:/usr/bin:/bin" "$update_script" 2>&1)
   local status=$?
   set -e
   [ "$status" -ne 0 ] || fail 'failed full transaction unexpectedly succeeded'
