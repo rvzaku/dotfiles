@@ -86,6 +86,16 @@ materialize_firstmate_config() {
     printf 'firstmate: missing authored crew-dispatch.json at %s\n' "$dispatch" >&2
     return 1
   }
+  local jq_bin
+  jq_bin=$(command -v jq 2>/dev/null || true)
+  [ -n "$jq_bin" ] || {
+    printf '%s\n' 'firstmate: jq is required to validate crew-dispatch.json' >&2
+    return 1
+  }
+  "$jq_bin" -e 'type == "object"' "$dispatch" >/dev/null 2>&1 || {
+    printf 'firstmate: authored crew-dispatch.json is invalid: %s\n' "$dispatch" >&2
+    return 1
+  }
   if [ -L "$config_dir" ] || { [ -e "$config_dir" ] && [ ! -d "$config_dir" ]; }; then
     printf 'firstmate: refusing unexpected config path %s\n' "$config_dir" >&2
     return 1
@@ -244,7 +254,7 @@ elif git -C "$repo" merge-base --is-ancestor HEAD "$upstream_ref"; then
     printf 'firstmate: fast-forwarded to %s\n' "$(git -C "$repo" rev-parse --short HEAD)"
   else
     printf '%s\n' 'firstmate: fast-forward failed; preserving the current checkout' >&2
-    exit 0
+    exit 1
   fi
 else
   printf 'firstmate: local history diverges from Kun/%s; preserving it\n' "$branch"

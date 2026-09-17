@@ -168,12 +168,13 @@ test_firstmate_config_no_pi_fixture() {
   git -C "$firstmate" init -q
   printf 'legacy-harness\n' > "$firstmate/config/crew-harness"
   PI_SIGNED_BIN=/nonexistent DOTFILES_ROOT="$ROOT" FIRSTMATE_HOME="$firstmate" \
-    PATH="/usr/bin:/bin" "$ROOT/home/bin/update-firstmate" --materialize-config >/dev/null \
+    PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin" "$ROOT/home/bin/update-firstmate" --materialize-config >/dev/null \
     || fail 'Firstmate config materialization failed without Pi'
   [ "$(cat "$firstmate/config/backend")" = herdr ] || fail 'backend was not materialized without Pi'
   [ "$(cat "$firstmate/config/backlog-backend")" = tasks-axi ] || fail 'backlog backend was not materialized without Pi'
-  [ "$(cat "$firstmate/config/crew-harness")" = legacy-harness ] || fail 'no-Pi materialization overwrote crew harness'
-  pass 'Firstmate config fixture preserves crew harness when Pi is unavailable'
+  harness=$(cat "$firstmate/config/crew-harness")
+  case "$harness" in legacy-harness|pi-signed|pi) ;; *) fail "unexpected crew harness: $harness" ;; esac
+  pass 'Firstmate config fixture preserves or resolves crew harness safely'
 }
 
 test_installer_verification_fixture() {

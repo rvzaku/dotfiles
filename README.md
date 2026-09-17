@@ -189,8 +189,10 @@ Home Manager installs Pi, the pinned AXI/Backpass/Remote Pi npm tools, and the
 user-owned global npm prefix at `~/.local/npm` (never `/nix/store`). Firstmate
 remains an agent distribution rather than a CLI; `bootstrap.sh` makes the
 upstream checkout available at `~/firstmate` and adds its `bin/` directory to
-PATH. Bootstrap and rebuild materialize the selected Firstmate config leaves
-as private regular files; they never symlink the whole Firstmate config.
+PATH. Bootstrap and update-firstmate materialize the selected Firstmate config
+leaves as private regular files. `rebuild.sh` only applies the current locked
+Darwin state and never mutates the external Firstmate checkout; these helpers
+never symlink the whole Firstmate config.
 
 Claude, Codex, OpenCode, Grok, and Pi retain adapters for their officially
 supported interfaces. This does not install OpenCode or Grok clients merely

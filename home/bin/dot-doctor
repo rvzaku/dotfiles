@@ -52,7 +52,7 @@ find_pi_signed() {
       printf '%s\n' "$PI_SIGNED_BIN"
       return 0
     fi
-    return 1
+    :
   fi
   candidate=$(command -v pi-signed 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
@@ -65,18 +65,23 @@ find_pi_signed() {
       return 0
     fi
   done
+  return 1
 }
 
 find_pi_plain() {
   local candidate
   candidate=$(command -v pi 2>/dev/null || true)
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+  if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
     printf '%s\n' "$candidate"
     return 0
   fi
   for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
-    [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
   done
+  return 1
 }
 
 if [ -f "$ROOT/flake.lock" ]; then

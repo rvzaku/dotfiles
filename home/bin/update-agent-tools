@@ -93,20 +93,41 @@ else
   export PATH="$trusted_path:$npm_prefix/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin:${PATH:-}"
 fi
 failures=()
-update_pi_packages() {
-  local pi_bin=''
-  if [ "${PI_SIGNED_BIN+x}" = x ] && [ -x "$PI_SIGNED_BIN" ] \
-    && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
-    pi_bin="$PI_SIGNED_BIN"
-  elif [ "${PI_SIGNED_BIN+x}" != x ] && command -v pi-signed >/dev/null 2>&1 \
-    && pi-signed --version >/dev/null 2>&1; then
-    pi_bin=$(command -v pi-signed)
-  elif [ "${PI_SIGNED_BIN+x}" != x ] && command -v pi >/dev/null 2>&1; then
-    pi_bin=$(command -v pi)
-  elif [ "${PI_SIGNED_BIN+x}" = x ] && [ -n "$PI_SIGNED_BIN" ] \
-    && command -v pi >/dev/null 2>&1; then
-    pi_bin=$(command -v pi)
+resolve_pi_runtime() {
+  local candidate
+  if [ "${PI_SIGNED_BIN+x}" = x ] && [ -n "$PI_SIGNED_BIN" ] \
+    && [ -x "$PI_SIGNED_BIN" ] && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
+    printf '%s\n' "$PI_SIGNED_BIN"
+    return 0
   fi
+  candidate=$(command -v pi-signed 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/pi-signed /usr/local/bin/pi-signed; do
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  candidate=$(command -v pi 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+update_pi_packages() {
+  local pi_bin
+  pi_bin=$(resolve_pi_runtime 2>/dev/null || true)
   if [ -z "$pi_bin" ]; then
     printf '%s\n' 'Pi unavailable; skipping native Pi package/catalog update (degraded)' >&2
     return 0

@@ -198,6 +198,10 @@ ensure_ssh_identity() {
     ssh-keygen -t ed25519 -f "$private" -C "${USER:-$(id -un)}@github.com"
   fi
   check_command ssh-keygen
+  chmod 600 "$private" || {
+    printf '%s\n' 'bootstrap: could not restrict SSH private-key permissions to 0600' >&2
+    return 1
+  }
   local derived_public key_type existing_public public_tmp
   derived_public=$(ssh-keygen -y -f "$private" 2>/dev/null) || {
     printf '%s\n' 'bootstrap: existing Ed25519 private key could not be read' >&2
@@ -242,7 +246,9 @@ ensure_ssh_identity() {
   [ -n "$host_keys" ] || { rm -f "$meta"; printf '%s\n' 'bootstrap: GitHub API returned no SSH host keys' >&2; return 1; }
   known_hosts="$ssh_dir/known_hosts"
   known_tmp=$(mktemp "$known_hosts.tmp.XXXXXX") || { rm -f "$meta"; return 1; }
-  if [ -f "$known_hosts" ]; then cat "$known_hosts" >"$known_tmp"; fi
+  if [ -f "$known_hosts" ]; then
+    awk 'BEGIN { OFS=" " } { n=split($1, hosts, ","); keep=1; for (i=1; i<=n; i++) if (hosts[i] == "github.com" || hosts[i] == "[github.com]:22") keep=0; if (keep) print }' "$known_hosts" >"$known_tmp"
+  fi
   while IFS= read -r host_key; do
     if ! grep -F -x "github.com $host_key" "$known_tmp" >/dev/null 2>&1; then
       printf 'github.com %s\n' "$host_key" >>"$known_tmp"
@@ -268,6 +274,11 @@ harden_supported_credentials() {
   printf '%s\n' '==> Step 9: AV-supported credential hardening'
   local metadata="${TMPDIR:-/tmp}/bootstrap-av-hardeners.$$.json" tool applicable
   av hardeners --json >"$metadata"
+  if ! jq -e '(.hardeners | type) == "array" and all(.hardeners[]; (.name | type) == "string" and (.applicable | type) == "boolean")' "$metadata" >/dev/null 2>&1; then
+    rm -f "$metadata"
+    printf '%s\n' 'bootstrap: Automic Vault hardeners output could not be parsed' >&2
+    return 1
+  fi
   for tool in gh claude codex node; do
     applicable=$(jq -r --arg tool "$tool" '[.hardeners[]? | select(.name == $tool) | .applicable] | first // false' "$metadata")
     if [ "$applicable" = true ]; then
