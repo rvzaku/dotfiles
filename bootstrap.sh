@@ -422,7 +422,7 @@ preserve_cursor_leftover() {
 
 ensure_apple_container() {
   printf '%s\n' '==> Step 13: Apple Container official installer'
-  local container_bin=/usr/local/bin/container
+  local container_bin=/usr/local/bin/container apple_identity='Apple Inc.'
   if [ -x "$container_bin" ]; then
     check_command pkgutil
     local code_signature
@@ -431,7 +431,7 @@ ensure_apple_container() {
         | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }' \
       || ! code_signature=$(codesign --display --verbose=4 "$container_bin" 2>&1) \
       || ! codesign --verify --strict "$container_bin" >/dev/null 2>&1 \
-      || ! printf '%s\n' "$code_signature" | grep -Fq 'Authority=Developer ID Application: Apple Inc. '; then
+      || ! printf '%s\n' "$code_signature" | grep -Fq "Authority=Developer ID Application: $apple_identity"; then
       printf 'bootstrap: refusing unverified Apple Container binary at %s\n' "$container_bin" >&2
       return 1
     fi
@@ -462,7 +462,7 @@ ensure_apple_container() {
       return 1
     fi
     case "$signature" in
-      *'Developer ID Installer: Apple '*) ;;
+      *"Developer ID Installer: $apple_identity"*) ;;
       *)
         printf '%s\n' "$signature" >&2
         rm -f "$release_json" "$pkg"

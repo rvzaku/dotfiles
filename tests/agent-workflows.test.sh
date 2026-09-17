@@ -296,6 +296,34 @@ test_skills_and_topgrade_boundaries() {
   for command in npm no-mistakes treehouse skills update-firstmate pi; do
     fake_command "$command"
   done
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
+  'scan --json')
+    if [ "${AV_HIGH:-0}" = 1 ]; then
+      printf '{"findings":[{"severity":"HIGH","source":"fixture","explanation":"fixture finding"}]}'
+    else
+      printf '{"findings":[]}'
+    fi
+    ;;
+  *) exit 2 ;;
+esac
+printf '\n'
+SCRIPT
+  cat >"$FAKE/container" <<'SCRIPT'
+#!/usr/bin/env bash
+if [ "${DOT_DOCTOR_FAIL:-0}" = 1 ]; then exit 1; fi
+exit 0
+SCRIPT
+  cp "$(command -v jq)" "$FAKE/jq"
+  chmod +x "$FAKE/av" "$FAKE/container" "$FAKE/jq"
+  mkdir -p "$TMP_ROOT/home/firstmate/config"
+  git -C "$TMP_ROOT/home/firstmate" init -q
+  cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$TMP_ROOT/home/firstmate/config/crew-dispatch.json"
+  printf 'herdr\n' >"$TMP_ROOT/home/firstmate/config/backend"
+  printf 'pi\n' >"$TMP_ROOT/home/firstmate/config/crew-harness"
+  printf 'tasks-axi\n' >"$TMP_ROOT/home/firstmate/config/backlog-backend"
   HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-skills" --seed >/dev/null || fail 'Skills source seeding failed'
   assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --skill vision --yes' 'Vision Skills source was not seeded explicitly'
@@ -314,6 +342,27 @@ test_skills_and_topgrade_boundaries() {
   [ "$(grep -c '^pi update$' "$log")" -eq 1 ] || fail 'Pi native update did not run exactly once'
   assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
   assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
+  local security_backup="$TMP_ROOT/security-backups" security_output
+  mkdir -p "$security_backup/old"
+  touch -t 202001010000 "$security_backup/old"
+  set +e
+  security_output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
+    PI_SIGNED_BIN=/nonexistent AV_HIGH=1 DOTFILES_BACKUP_BASE="$security_backup" \
+    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+  local security_status=$?
+  set -e
+  [ "$security_status" -ne 0 ] || fail 'HIGH Automic Vault finding did not block full update'
+  [ -d "$security_backup/old" ] || fail 'HIGH Automic Vault finding allowed backup pruning'
+  assert_contains "$security_output" 'retaining migration backups' 'AV failure did not retain migration backups'
+  set +e
+  security_output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
+    PI_SIGNED_BIN=/nonexistent DOT_DOCTOR_FAIL=1 DOTFILES_BACKUP_BASE="$security_backup" \
+    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+  security_status=$?
+  set -e
+  [ "$security_status" -ne 0 ] || fail 'failing dot-doctor did not block full update'
+  [ -d "$security_backup/old" ] || fail 'failing dot-doctor allowed backup pruning'
+  assert_contains "$security_output" 'retaining migration backups' 'dot-doctor failure did not retain migration backups'
   : >"$log"
   if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-agent-tools" --only brew >/dev/null 2>&1; then
@@ -363,6 +412,12 @@ SCRIPT
     fake_command "$command"
   done
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
+  mkdir -p "$TMP_ROOT/npm-home/firstmate/config"
+  git -C "$TMP_ROOT/npm-home/firstmate" init -q
+  cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$TMP_ROOT/npm-home/firstmate/config/crew-dispatch.json"
+  printf 'herdr\n' >"$TMP_ROOT/npm-home/firstmate/config/backend"
+  printf 'pi\n' >"$TMP_ROOT/npm-home/firstmate/config/crew-harness"
+  printf 'tasks-axi\n' >"$TMP_ROOT/npm-home/firstmate/config/backlog-backend"
   output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
     NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \

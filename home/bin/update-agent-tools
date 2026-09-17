@@ -197,46 +197,7 @@ else
   failures+=(firstmate)
 fi
 
-verify_av() {
-  if ! command -v av >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-    printf '%s\n' 'agent tools: Automic Vault and jq are required for the security gate' >&2
-    return 1
-  fi
-  local doctor scan issues blocking
-  doctor=$(mktemp "${TMPDIR:-/tmp}/agent-tools-av-doctor.XXXXXX") || return 1
-  if ! av doctor --json >"$doctor" 2>/dev/null \
-    || ! jq -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$doctor" >/dev/null 2>&1; then
-    rm -f "$doctor"
-    printf '%s\n' 'agent tools: Automic Vault doctor output was unavailable or malformed' >&2
-    return 1
-  fi
-  issues=$(jq '[.results[].issues[]] | length' "$doctor" 2>/dev/null || printf parse-error)
-  if [ "$issues" != 0 ]; then
-    printf 'agent tools: Automic Vault doctor reports %s unresolved issue(s)\n' "$issues" >&2
-    jq -r '.results[]?.issues[]? | "  AV doctor: " + ((.name // .id // "issue")|tostring) + " - " + ((.description // .message // "remediation required")|tostring)' "$doctor" >&2 || true
-    rm -f "$doctor"
-    return 1
-  fi
-  rm -f "$doctor"
-  scan=$(mktemp "${TMPDIR:-/tmp}/agent-tools-av-scan.XXXXXX") || return 1
-  if ! av scan --json >"$scan" 2>/dev/null \
-    || ! jq -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$scan" >/dev/null 2>&1; then
-    rm -f "$scan"
-    printf '%s\n' 'agent tools: Automic Vault scan output was unavailable or malformed' >&2
-    return 1
-  fi
-  blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$scan" 2>/dev/null || printf parse-error)
-  if [ "$blocking" != 0 ]; then
-    printf 'agent tools: Automic Vault scan reports %s unresolved HIGH/CRITICAL finding(s)\n' "$blocking" >&2
-    jq -r '.findings[]? | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical") | "  AV scan: [" + .severity + "] " + ((.explanation // .description // .message // "remediation required")|tostring)' "$scan" >&2 || true
-    rm -f "$scan"
-    return 1
-  fi
-  rm -f "$scan"
-  printf '%s\n' 'agent tools: Automic Vault doctor and scan are clean'
-}
-
-if ! verify_av; then
+if ! "$script_dir/verify-av" 'agent tools'; then
   failures+=(av-security)
 fi
 if [ -x "$script_dir/dot-doctor" ]; then
