@@ -87,10 +87,13 @@ the Firstmate state backup directory before replacement; runtime config remains
 outside Git.
 
 Apple Container is installed only by bootstrap's official signed release path:
-the latest `.pkg` is fetched from `apple/container`, signature-checked with
-`pkgutil`, installed under `/usr/local` with administrator approval, and started
-with `container system start`. It is not substituted with a Nix or Homebrew
-package. Container service state and images remain private runtime data.
+the latest `.pkg` is fetched from `apple/container`, and `pkgutil
+--check-signature` must report an Apple Developer ID Installer chain anchored
+at Apple Root CA. The package is installed under `/usr/local` with administrator
+approval; bootstrap then verifies the signed binary and root-owned provenance
+record before starting with `container system start`. It is not substituted
+with a Nix or Homebrew package. Container service state and images remain
+private runtime data.
 
 ## Validation and recovery
 

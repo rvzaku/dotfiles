@@ -79,7 +79,9 @@ state; no hidden `.dotfiles` alias is created. Homebrew cleanup remains `zap`
 on every Mac; non-owned machines record a protective marker, show the exact
 inventory, and stop before activation unless the owner confirms. Determinate
 Nix, no-mistakes, and Treehouse downloads are pinned and checksum-verified; Apple's Container
-package is signature-checked before installation. Secrets and tokens remain
+package is checked with `pkgutil --check-signature` for an Apple Developer ID Installer
+chain anchored at Apple Root CA before installation, and the installed binary/provenance
+are revalidated. Secrets and tokens remain
 under Automic Vault/native Keychain boundaries, never Git or Nix.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
