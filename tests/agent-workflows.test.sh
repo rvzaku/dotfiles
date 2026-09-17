@@ -39,7 +39,7 @@ SCRIPT
 }
 trusted_agent_tool_present() {
   local tool directory
-  for tool in no-mistakes treehouse pi-signed; do
+  for tool in no-mistakes treehouse pi-signed av; do
     for directory in /usr/bin /bin /opt/homebrew/bin /opt/homebrew/sbin /run/current-system/sw/bin /nix/var/nix/profiles/default/bin /usr/local/bin; do
       [ -x "$directory/$tool" ] && return 0
     done
@@ -273,28 +273,36 @@ SCRIPT
 }
 
 test_av_authority_blocks_high_findings() {
-  local doctor_home="$TMP_ROOT/av-doctor-home" status
-  mkdir -p "$doctor_home"
+  local status
   cat >"$FAKE/av" <<'SCRIPT'
 #!/usr/bin/env bash
 case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
   'scan --json') printf '{"findings":[{"severity":"high"}]}\n' ;;
   *) exit 2 ;;
 esac
 SCRIPT
-  cat >"$FAKE/jq" <<'SCRIPT'
-#!/usr/bin/env bash
-printf '1\n'
-SCRIPT
+  cp "$(command -v jq)" "$FAKE/jq"
   chmod +x "$FAKE/av" "$FAKE/jq"
   set +e
-  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/av-doctor.out" 2>&1
+  PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/verify-av" test >"$TMP_ROOT/av-doctor.out" 2>&1
   status=$?
   set -e
-  [ "$status" -ne 0 ] || fail 'dot-doctor claimed success with a HIGH Automic Vault finding'
+  [ "$status" -ne 0 ] || fail 'AV gate claimed success with a HIGH finding'
   assert_file_contains "$TMP_ROOT/av-doctor.out" 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' \
     'Automic Vault blocking finding was not reported'
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
+  'scan --json') printf '{"findings":[{"severity":"low"}]}' ;;
+  *) exit 2 ;;
+esac
+printf '\n'
+SCRIPT
+  chmod +x "$FAKE/av"
+  PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/verify-av" test >"$TMP_ROOT/av-low.out" 2>&1 \
+    || fail 'AV gate rejected a non-blocking LOW finding'
   rm -f "$FAKE/av" "$FAKE/jq"
   pass 'Automic Vault HIGH/CRITICAL findings block managed security success'
 }
