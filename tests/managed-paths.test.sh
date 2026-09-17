@@ -67,7 +67,8 @@ directories="$TMP_ROOT/directories0"
   printf '%s\0%s\0' '.local/bin' "$REPO/home/bin"
 } > "$directories"
 
-managed_output=$(HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
+mkdir -p "$TMP_ROOT/root-home"
+managed_output=$(HOME="$TMP_ROOT/root-home" DOTFILES_HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
   bash "$ROOT/home/bin/prepare-managed-paths" \
   --manifest0 "$manifest" \
   --directories0 "$directories" \
@@ -142,7 +143,7 @@ ln -s "$TEST_HOME/.local/state/dotfiles/pi-agent-settings.json" \
   "$TEST_HOME/.pi/agent/settings.json"
 backup_roots_before=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager" \
   -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
+HOME="$TMP_ROOT/root-home" DOTFILES_HOME="$TEST_HOME" XDG_STATE_HOME="$TEST_HOME/.local/state" \
   bash "$ROOT/home/bin/prepare-managed-paths" \
   --manifest0 "$manifest" \
   --directories0 "$directories" \

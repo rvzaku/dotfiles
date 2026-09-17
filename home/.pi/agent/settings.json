@@ -16,6 +16,8 @@
     "npm:pi-web-access",
     "npm:@ryan_nookpi/pi-extension-codex-fast-mode",
     "npm:remote-pi",
-    "npm:mitsupi"
+    {
+      "source": "npm:mitsupi"
+    }
   ]
 }

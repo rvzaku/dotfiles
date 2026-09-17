@@ -67,10 +67,166 @@ test_public_commands() {
   if printf '%s' "$actual" | jq -e 'index(".local/bin/mate")' >/dev/null; then
     fail 'mate command leaked into public command links'
   fi
-  for command in apply-darwin prepare-managed-paths prepare-claude-settings prune-migration-backups update-skills; do
+  for command in apply-darwin prepare-managed-paths prepare-pi-settings prepare-claude-settings prune-migration-backups update-skills; do
     [ -x "$ROOT/home/bin/$command" ] || fail "repository helper $command is not executable"
   done
   pass 'public command links are allowlisted and helpers stay private'
+}
+
+test_pi_package_resource_ownership() {
+  if ! command -v pi-signed >/dev/null 2>&1; then
+    echo 'skip: pi-signed unavailable for package resource ownership probe'
+    return 0
+  fi
+  command -v jq >/dev/null 2>&1 || fail 'jq is required for Pi package ownership probe'
+
+  local fixture="$TMP_ROOT/pi-package-ownership"
+  local derived_home="$fixture/derived-home" root_home="$fixture/root-home"
+  local agent="$derived_home/.pi/agent"
+  local package="$agent/npm/node_modules/mitsupi"
+  mkdir -p "$package/extensions" "$package/skills" "$agent/extensions" "$agent/skills/github"
+  cat >"$package/package.json" <<'JSON'
+{"name":"mitsupi","version":"1.0.0","type":"module","pi":{"extensions":["./extensions"],"skills":["./skills"]}}
+JSON
+  cat >"$package/extensions/context.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('mitsupi-context', { description: 'package-only context' }); }
+TS
+  cat >"$package/extensions/go-to-bed.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('mitsupi-bed', { description: 'package-only bed' }); }
+TS
+  cat >"$package/extensions/loop.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('mitsupi-loop', { description: 'package-only loop' }); }
+TS
+  cat >"$package/extensions/control.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-control', { description: 'package control' }); }
+TS
+  cat >"$package/extensions/multi-edit.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-edit', { description: 'package multi-edit' }); }
+TS
+  cat >"$agent/extensions/control.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-control', { description: 'user control' }); }
+TS
+  cat >"$agent/extensions/unified-edit.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-edit', { description: 'user unified-edit' }); }
+TS
+  mkdir -p "$package/skills/frontend-design" "$package/skills/mermaid" "$package/skills/github"
+  cat >"$package/skills/frontend-design/SKILL.md" <<'SKILL'
+---
+name: frontend-design
+description: Package-only frontend design fixture.
+---
+# frontend-design fixture
+SKILL
+  cat >"$package/skills/mermaid/SKILL.md" <<'SKILL'
+---
+name: mermaid
+description: Package-only Mermaid fixture.
+---
+# mermaid fixture
+SKILL
+  cat >"$package/skills/github/SKILL.md" <<'SKILL'
+---
+name: github
+description: Duplicate user skill fixture.
+---
+# github duplicate fixture
+SKILL
+  cp "$package/skills/github/SKILL.md" "$agent/skills/github/SKILL.md"
+  cat >"$agent/settings.json" <<'JSON'
+{
+  "customSetting": "preserve-me",
+  "packages": [
+    "npm:mitsupi",
+    {"source":"npm:mitsupi","existingPackageField":{"keepExisting":true}},
+    {"source":"npm:mitsupi","customPackageField":{"keep":true}}
+  ]
+}
+JSON
+  HOME="$root_home" DOTFILES_HOME="$derived_home" \
+    "$ROOT/home/bin/prepare-pi-settings" "$agent/settings.json" "$(command -v jq)" \
+    || fail 'duplicate-rich Pi settings preparation failed'
+  jq -e '.customSetting == "preserve-me"' "$agent/settings.json" >/dev/null \
+    || fail 'Pi settings preparation discarded an unknown root setting'
+  jq -e '
+    ([.packages[] | select(type == "object" and .source == "npm:mitsupi")] | length) == 1
+    and ([.packages[] | select(type == "string" and . == "npm:mitsupi")] | length) == 0
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].customPackageField.keep == true)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].existingPackageField.keepExisting == true)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].extensions | index("!extensions/control.ts")) != null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].extensions | index("!extensions/multi-edit.ts")) != null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].skills | index("!skills/github/SKILL.md")) != null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].extensions | index("!extensions/context.ts")) == null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].skills | index("!skills/frontend-design/SKILL.md")) == null
+  ' "$agent/settings.json" >/dev/null || fail 'duplicate-rich Pi filters did not preserve package-only resources'
+
+  local output="$fixture/duplicate-help.out" errors="$fixture/duplicate-help.err"
+  mkdir -p "$root_home"
+  PI_CODING_AGENT_DIR="$agent" HOME="$root_home" pi-signed --help >"$output" 2>"$errors" \
+    || fail 'pi-signed duplicate-rich resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$errors"; then
+    fail "duplicate-rich pi-signed startup reported a resource conflict: $(cat "$errors")"
+  fi
+  local flag
+  for flag in shared-control shared-edit mitsupi-context mitsupi-bed mitsupi-loop; do
+    [ "$(grep -c -- "--$flag" "$output")" -eq 1 ] \
+      || fail "duplicate-rich Pi probe did not load exactly one owner for --$flag"
+  done
+
+  # Package-only skills remain discoverable alongside the local skill owner.
+  printf '%s\n' '{"type":"get_commands"}' | PI_CODING_AGENT_DIR="$agent" HOME="$root_home" \
+    pi-signed --mode rpc --no-session >"$fixture/duplicate-rpc.out" 2>"$fixture/duplicate-rpc.err" \
+    || fail 'duplicate-rich Pi skill resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$fixture/duplicate-rpc.err"; then
+    fail "duplicate-rich Pi skill probe reported a conflict: $(cat "$fixture/duplicate-rpc.err")"
+  fi
+  jq -e '
+    ([.data.commands[] | select(.name == "skill:frontend-design")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:mermaid")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:github")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:github")][0].sourceInfo.origin == "top-level")
+  ' "$fixture/duplicate-rpc.out" >/dev/null \
+    || fail 'duplicate-rich Pi skill probe did not keep package-only skills or remove duplicate skill'
+
+  # Fresh installs have no customized user resources: package-only extensions
+  # and skills must remain discoverable, including frontend-design and mermaid.
+  local fresh="$fixture/fresh-home"
+  local fresh_agent="$fresh/.pi/agent"
+  mkdir -p "$fresh_agent/npm/node_modules"
+  cp -R "$agent/npm/node_modules/mitsupi" "$fresh_agent/npm/node_modules/"
+  cat >"$fresh_agent/settings.json" <<'JSON'
+{"customSetting":"fresh-preserve","packages":[{"source":"npm:mitsupi","customPackageField":{"fresh":true}}]}
+JSON
+  HOME="$fresh" DOTFILES_HOME="$fresh" \
+    "$ROOT/home/bin/prepare-pi-settings" "$fresh_agent/settings.json" "$(command -v jq)" \
+    || fail 'fresh Pi settings preparation failed'
+  jq -e '
+    .customSetting == "fresh-preserve"
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].customPackageField.fresh == true)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0] | has("extensions") | not)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0] | has("skills") | not)
+  ' "$fresh_agent/settings.json" >/dev/null || fail 'fresh Pi filters incorrectly removed package resources'
+  mkdir -p "$fresh"
+  PI_CODING_AGENT_DIR="$fresh_agent" HOME="$fresh" pi-signed --help >"$fixture/fresh-help.out" 2>"$fixture/fresh-help.err" \
+    || fail 'pi-signed fresh resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$fixture/fresh-help.err"; then
+    fail "fresh pi-signed startup reported a resource conflict: $(cat "$fixture/fresh-help.err")"
+  fi
+  for flag in shared-control shared-edit mitsupi-context mitsupi-bed mitsupi-loop; do
+    [ "$(grep -c -- "--$flag" "$fixture/fresh-help.out")" -eq 1 ] \
+      || fail "fresh Pi probe did not load package resource --$flag"
+  done
+  printf '%s\n' '{"type":"get_commands"}' | PI_CODING_AGENT_DIR="$fresh_agent" HOME="$fresh" \
+    pi-signed --mode rpc --no-session >"$fixture/fresh-rpc.out" 2>"$fixture/fresh-rpc.err" \
+    || fail 'fresh Pi skill resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$fixture/fresh-rpc.err"; then
+    fail "fresh Pi skill probe reported a conflict: $(cat "$fixture/fresh-rpc.err")"
+  fi
+  jq -e '
+    ([.data.commands[] | select(.name == "skill:frontend-design")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:mermaid")] | length) == 1
+  ' "$fixture/fresh-rpc.out" >/dev/null \
+    || fail 'fresh Pi skill probe did not discover package-only skills'
+  pass 'Pi package filters dynamically preserve package-only resources, local owners, unknown settings, and clean startup'
 }
 
 test_pi_preference_and_degradation() {
@@ -366,6 +522,7 @@ SCRIPT
   pass 'Nix lock rollback and read-only doctor behavior'
 }
 
+test_pi_package_resource_ownership
 test_public_commands
 test_pi_preference_and_degradation
 test_av_authority_blocks_high_findings
