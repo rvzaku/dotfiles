@@ -43,7 +43,7 @@ problems=0
 degraded=0
 pass_check() { printf 'dot-doctor: PASS - %s\n' "$1"; }
 fail_check() { printf 'dot-doctor: FAIL - %s\n' "$1" >&2; problems=$((problems + 1)); }
-redact_origin() { /usr/bin/sed -E 's#^([[:alnum:]+.-]+://)[^/@]*@#\1<redacted>@#'; }
+redact_origin() { /usr/bin/sed -E -e 's#^([[:alpha:]][[:alnum:]+.-]*://)[^/@]*@#\1<redacted>@#' -e 's#^[^/@:]+(:[^/@]*)?@#<redacted>@#'; }
 degraded_check() { printf 'dot-doctor: DEGRADED - %s\n' "$1" >&2; degraded=$((degraded + 1)); }
 
 find_pi_signed() {

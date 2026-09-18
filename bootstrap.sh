@@ -31,7 +31,9 @@ load_nix_profile() {
 }
 
 redact_origin() {
-  /usr/bin/sed -E 's#^([[:alnum:]+.-]+://)[^/@]*@#\1<redacted>@#'
+  /usr/bin/sed -E \
+    -e 's#^([[:alpha:]][[:alnum:]+.-]*://)[^/@]*@#\1<redacted>@#' \
+    -e 's#^[^/@:]+(:[^/@]*)?@#<redacted>@#'
 }
 
 check_command() {

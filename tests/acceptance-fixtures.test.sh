@@ -28,8 +28,8 @@ test_portable_identity_fixture() {
     fail "evaluation did not preserve DOTFILES_HOME: $home_identity"
   pam_options=$(DOTFILES_USER=fresh-user DOTFILES_HOST=borrowed-mac nix eval --impure --json \
     "$ROOT#darwinConfigurations.borrowed-mac.config.security.pam.services.sudo_local")
-  assert_contains "$pam_options" '"touchIdAuth":true' 'sudo Touch ID is not declared'
-  assert_contains "$pam_options" '"reattach":true' 'sudo pam_reattach is not declared'
+  printf '%s\n' "$pam_options" | jq -e '.touchIdAuth == true and .reattach == true' >/dev/null \
+    || fail 'sudo PAM options do not enable Touch ID reattach'
   pass 'portable user/hostname fixture resolves a different machine identity'
 }
 

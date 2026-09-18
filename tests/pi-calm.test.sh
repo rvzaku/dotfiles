@@ -157,18 +157,12 @@ test_static_typescript_and_repo_wiring() {
         managedPathsActive = cfg.home.activation ? "prepareManagedPaths";
       }
     ') || fail "could not evaluate the real Home Manager file map"
-  case "$home_manager_wiring" in
-    *'"wholeDirectoryLinked":false'*) : ;;
-    *) fail "home.nix links ~/.pi/agent/extensions as a whole directory" ;;
-  esac
-  case "$home_manager_wiring" in
-    *'"calmEntryLinked":true'*) : ;;
-    *) fail "home.nix no longer additively links the calm extension entry point" ;;
-  esac
-  case "$home_manager_wiring" in
-    *'"managedPathsActive":true'*) : ;;
-    *) fail "home.nix lost collision-safe adoption" ;;
-  esac
+  printf '%s\n' "$home_manager_wiring" | jq -e '.wholeDirectoryLinked == false' >/dev/null \
+    || fail "home.nix links ~/.pi/agent/extensions as a whole directory"
+  printf '%s\n' "$home_manager_wiring" | jq -e '.calmEntryLinked == true' >/dev/null \
+    || fail "home.nix no longer additively links the calm extension entry point"
+  printf '%s\n' "$home_manager_wiring" | jq -e '.managedPathsActive == true' >/dev/null \
+    || fail "home.nix lost collision-safe adoption"
   [ -f "$CALM_DIR/index.ts" ] || fail "calm extension entry point missing"
   [ -f "$CALM_DIR/LICENSE" ] || fail "calm license file missing"
 
