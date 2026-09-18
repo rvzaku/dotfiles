@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -u
+
+verify_package_signature() {
+  local signature
+  signature=$(cat)
+  if ! printf '%s\n' "$signature" | grep -Eq 'Status: signed by a certificate trusted by (Mac OS X|macOS)' \
+    || ! printf '%s\n' "$signature" | awk '
+      /^ *Certificate Chain:/ { in_chain = 1; next }
+      in_chain && /Developer ID Installer: Apple Inc\./ { installer = 1 }
+      in_chain && /Apple Root CA/ { root = 1 }
+      END { exit !(installer && root) }
+  '; then
+    printf '%s\n' "$signature" >&2
+    printf '%s\n' 'Apple Container package is not proven to be Apple-signed with an Apple Root CA chain' >&2
+    return 1
+  fi
+}
+
+verify_installed() {
+  local container_bin=${1:-/usr/local/bin/container}
+  local provenance=${2:-/var/db/com.apple.container-installer.provenance}
+  local recorded_package recorded_binary code_signature binary_signature
+  [ -f "$provenance" ] || return 1
+  [ "$(stat -f '%Su' "$provenance" 2>/dev/null)" = root ] || return 1
+  case "$(stat -f '%Lp' "$provenance" 2>/dev/null)" in
+    600|400) ;;
+    *) return 1 ;;
+  esac
+  [ -x "$container_bin" ] || return 1
+  command -v pkgutil >/dev/null 2>&1 || return 1
+  pkgutil --pkg-info com.apple.container-installer >/dev/null 2>&1 || return 1
+  pkgutil --file-info "$container_bin" 2>/dev/null \
+    | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }' \
+    || return 1
+  command -v codesign >/dev/null 2>&1 || return 1
+  codesign --verify --strict "$container_bin" >/dev/null 2>&1 || return 1
+  code_signature=$(codesign --display --verbose=4 "$container_bin" 2>&1) || return 1
+  printf '%s\n' "$code_signature" | grep -Fq 'Authority=Developer ID Application: Apple Inc.' || return 1
+  grep -Fqx 'signer=Developer ID Installer: Apple Inc.' "$provenance" || return 1
+  grep -Fqx 'root=Apple Root CA' "$provenance" || return 1
+  recorded_package=$(sed -n 's/^package_sha256=//p' "$provenance")
+  printf '%s\n' "$recorded_package" | grep -Eq '^[[:xdigit:]]{64}$' || return 1
+  recorded_binary=$(sed -n 's/^binary_sha256=//p' "$provenance")
+  printf '%s\n' "$recorded_binary" | grep -Eq '^[[:xdigit:]]{64}$' || return 1
+  command -v shasum >/dev/null 2>&1 || return 1
+  binary_signature=$(shasum -a 256 "$container_bin" | awk '{print $1}') || return 1
+  [ "$recorded_binary" = "$binary_signature" ]
+}
+
+case "${1:-}" in
+  --package-signature)
+    [ "$#" -eq 1 ] || { printf 'usage: %s --package-signature < signature.txt\n' "$0" >&2; exit 2; }
+    verify_package_signature
+    ;;
+  --installed)
+    [ "$#" -le 3 ] || { printf 'usage: %s --installed [CONTAINER_BIN] [PROVENANCE]\n' "$0" >&2; exit 2; }
+    verify_installed "${2:-/usr/local/bin/container}" "${3:-/var/db/com.apple.container-installer.provenance}"
+    ;;
+  *)
+    printf 'usage: %s --package-signature < signature.txt | %s --installed [CONTAINER_BIN] [PROVENANCE]\n' "$0" "$0" >&2
+    exit 2
+    ;;
+esac

@@ -125,8 +125,6 @@ test_brew_zap_inventory_fixture() {
   pass 'Brew zap inventory fixture covers protective and own-machine paths'
 }
 
-# A clean doctor fixture proves Herdr, Treehouse, No Mistakes, AXI, Backpass,
-# Skills, Container, GitHub auth, npm prefix, and Firstmate wiring together.
 test_agent_health_fixture() {
   local bin="$fixture_root/health-bin" home="$fixture_root/health-home" firstmate="$fixture_root/health-firstmate"
   mkdir -p "$bin" "$home" "$firstmate/config" "$firstmate/bin"
@@ -186,13 +184,14 @@ EOF
   chmod 755 "$bin/gh"
   local output
   output=$(PATH="$bin:/usr/bin:/bin" HOME="$home" DOTFILES_ROOT="$ROOT" \
-    FIRSTMATE_HOME="$firstmate" "$ROOT/home/bin/dot-doctor" 2>&1)
+    FIRSTMATE_HOME="$firstmate" "$ROOT/home/bin/dot-doctor" 2>&1 || true)
   assert_contains "$output" 'herdr is available' 'doctor fixture did not check Herdr'
   assert_contains "$output" 'treehouse is available' 'doctor fixture did not check Treehouse'
   assert_contains "$output" 'global Skills registry reports required upstream sources' 'Skills registry fixture failed'
-  assert_contains "$output" 'Apple Container system is running' 'Container fixture failed'
-  assert_contains "$output" 'dot-doctor: OK' 'healthy agent fixture was not clean'
-  pass 'Herdr/Treehouse/No Mistakes/AXI/Backpass/Skills/Container doctor fixture is clean'
+  assert_contains "$output" 'Apple Container CLI is unavailable or its Apple provenance is unproven' \
+    'doctor trusted an arbitrary PATH Container executable'
+  assert_contains "$output" 'dot-doctor: FAIL' 'doctor did not fail on unproven Container provenance'
+  pass 'doctor fixture accepts managed tools while rejecting unproven Container provenance'
 }
 
 # Supply-chain and quota/dispatch fixtures assert the exact guardrails while
@@ -244,10 +243,8 @@ test_installer_verification_fixture() {
   printf '%s  %s\n' "$hash" "$fixture_root/pkg/installer" | shasum -a 256 -c - >/dev/null
   printf '%s  %s\n' "${hash}bad" "$fixture_root/pkg/installer" | shasum -a 256 -c - >/dev/null 2>&1 && \
     fail 'checksum fixture accepted an invalid digest'
-  local signature_fn good_signature bad_signature
-  signature_fn=$(awk '/^verify_apple_container_pkg_signature\(\)/ { found = 1 } found { print; if ($0 == "}") exit }' "$ROOT/bootstrap.sh")
-  [ -n "$signature_fn" ] || fail 'Apple Container signature verifier was not found'
-  eval "$signature_fn"
+  local verifier="$ROOT/home/bin/verify-apple-container" good_signature bad_signature
+  [ -x "$verifier" ] || fail 'Apple Container signature verifier is not executable'
   good_signature=$(cat <<'EOF'
 Package "container.pkg":
     Status: signed by a certificate trusted by macOS
@@ -256,9 +253,10 @@ Package "container.pkg":
     2. Apple Root CA
 EOF
   )
-  verify_apple_container_pkg_signature "$good_signature" || fail 'valid Apple Container authority chain was rejected'
+  printf '%s\n' "$good_signature" | "$verifier" --package-signature \
+    || fail 'valid Apple Container authority chain was rejected'
   bad_signature=${good_signature/Apple Root CA/Example Root CA}
-  if verify_apple_container_pkg_signature "$bad_signature" >/dev/null 2>&1; then
+  if printf '%s\n' "$bad_signature" | "$verifier" --package-signature >/dev/null 2>&1; then
     fail 'unanchored Apple Container authority chain was accepted'
   fi
   pass 'Apple Container package verifier requires Apple Developer ID Installer chain anchored at Apple Root CA'

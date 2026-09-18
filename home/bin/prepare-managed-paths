@@ -245,9 +245,12 @@ settings_should_backup=false
 settings_skip=false
 settings_relink=false
 if [ -e "$settings_target" ] || [ -L "$settings_target" ]; then
-  if is_expected_link "$settings_target" "$settings_state" \
-    || is_expected_link "$settings_target" "$settings_source"; then
+  if is_expected_link "$settings_target" "$settings_state"; then
     settings_existing="$settings_target"
+  elif is_expected_link "$settings_target" "$settings_source"; then
+    settings_existing="$settings_source"
+    backup_target "$settings_target" '.pi/agent/settings.json'
+    settings_relink=true
   elif is_home_manager_generation_link "$settings_target"; then
     backup_target "$settings_target" '.pi/agent/settings.json'
     settings_relink=true

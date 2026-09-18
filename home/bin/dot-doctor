@@ -352,14 +352,17 @@ else
   degraded_check 'flake evaluation is unproven because nix is unavailable'
 fi
 
-if command -v container >/dev/null 2>&1; then
-  if container system status >/dev/null 2>&1; then
+container_bin=/usr/local/bin/container
+container_provenance=/var/db/com.apple.container-installer.provenance
+container_verifier="$ROOT/home/bin/verify-apple-container"
+if [ -x "$container_verifier" ] && "$container_verifier" --installed "$container_bin" "$container_provenance" >/dev/null 2>&1; then
+  if "$container_bin" system status >/dev/null 2>&1; then
     pass_check 'Apple Container system is running'
   else
     fail_check 'Apple Container CLI is installed but its system service is not running'
   fi
 else
-  fail_check 'Apple Container CLI is unavailable; Container state is unproven'
+  fail_check 'Apple Container CLI is unavailable or its Apple provenance is unproven'
 fi
 
 if [ "$problems" -gt 0 ]; then

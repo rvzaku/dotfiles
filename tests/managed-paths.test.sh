@@ -115,6 +115,32 @@ backup_root=$(find "$TEST_HOME/.local/state/dotfiles/backups/home-manager" \
 [ "$(cat "$backup_root/files/.claude/settings.json")" = 'existing Claude settings' ] \
   || fail "Claude settings backup was not byte-preserving"
 
+legacy_home="$TMP_ROOT/legacy-settings-home"
+legacy_source="$REPO/home/.pi/agent/settings.json"
+legacy_state="$legacy_home/.local/state/dotfiles/pi-agent-settings.json"
+legacy_target="$legacy_home/.pi/agent/settings.json"
+legacy_manifest="$TMP_ROOT/legacy-manifest0"
+legacy_directories="$TMP_ROOT/legacy-directories0"
+mkdir -p "$(dirname "$legacy_target")" "$(dirname "$legacy_state")"
+printf '%s\n' '{"theme":"legacy","localOnly":true}' >"$legacy_source"
+ln -s "$legacy_source" "$legacy_target"
+: >"$legacy_manifest"
+: >"$legacy_directories"
+HOME="$TMP_ROOT/root-home" DOTFILES_HOME="$legacy_home" XDG_STATE_HOME="$legacy_home/.local/state" \
+  bash "$ROOT/home/bin/prepare-managed-paths" \
+  --manifest0 "$legacy_manifest" \
+  --directories0 "$legacy_directories" \
+  --settings-source "$legacy_source" \
+  --settings-state "$legacy_state" \
+  --settings-target "$legacy_target" \
+  --jq "$(command -v jq)" >/dev/null
+[ -L "$legacy_target" ] || fail "authored Pi settings predecessor was not relinked"
+[ "$(readlink "$legacy_target")" = "$legacy_state" ] || fail "Pi settings target was not relinked to writable state"
+[ "$(jq -r '.theme' "$legacy_state")" = legacy ] || fail "legacy Pi settings were not composed"
+legacy_backup=$(find "$legacy_home/.local/state/dotfiles/backups/home-manager" \
+  -path '*/files/.pi/agent/settings.json' -print -quit)
+[ -L "$legacy_backup" ] || fail "authored Pi settings predecessor was not backed up"
+
 # Claude's standalone writable settings helper handles the same predecessor
 # and unknown-symlink boundaries without touching the authored source.
 claude_home="$TMP_ROOT/claude-home"

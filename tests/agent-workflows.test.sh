@@ -67,7 +67,7 @@ test_public_commands() {
   if printf '%s' "$actual" | jq -e 'index(".local/bin/mate")' >/dev/null; then
     fail 'mate command leaked into public command links'
   fi
-  for command in apply-darwin prepare-managed-paths prepare-pi-settings prepare-claude-settings prune-migration-backups update-skills; do
+  for command in apply-darwin prepare-managed-paths prepare-pi-settings prepare-claude-settings prune-migration-backups update-skills verify-apple-container; do
     [ -x "$ROOT/home/bin/$command" ] || fail "repository helper $command is not executable"
   done
   pass 'public command links are allowlisted and helpers stay private'
@@ -263,14 +263,12 @@ test_av_authority_blocks_high_findings() {
   cat >"$FAKE/av" <<'SCRIPT'
 #!/usr/bin/env bash
 case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
   'scan --json') printf '{"findings":[{"severity":"high"}]}\n' ;;
   *) exit 2 ;;
 esac
 SCRIPT
-  cat >"$FAKE/jq" <<'SCRIPT'
-#!/usr/bin/env bash
-printf '1\n'
-SCRIPT
+  cp "$(command -v jq)" "$FAKE/jq"
   chmod +x "$FAKE/av" "$FAKE/jq"
   set +e
   HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
@@ -280,14 +278,62 @@ SCRIPT
   [ "$status" -ne 0 ] || fail 'dot-doctor claimed success with a HIGH Automic Vault finding'
   assert_file_contains "$TMP_ROOT/av-doctor.out" 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' \
     'Automic Vault blocking finding was not reported'
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
+  'scan --json') printf '{"findings":[{"severity":"low"}]}' ;;
+  *) exit 2 ;;
+esac
+SCRIPT
+  chmod +x "$FAKE/av"
+  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/av-low.out" 2>&1 || true
+  if grep -Fq 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' "$TMP_ROOT/av-low.out"; then
+    fail 'Automic Vault LOW finding was treated as blocking'
+  fi
   rm -f "$FAKE/av" "$FAKE/jq"
   pass 'Automic Vault HIGH/CRITICAL findings block managed security success'
 }
 
 test_topgrade_updates_only_boundary() {
-  if grep -Eq 'verify-av|dot-doctor' "$ROOT/home/bin/update-agent-tools"; then
-    fail 'full Topgrade custom stage unexpectedly owns AV or dot-doctor gates'
+  if trusted_agent_tool_present; then
+    pass 'Trusted agent tools present; updates-only boundary fixture skipped'
+    return 0
   fi
+  local log="$TMP_ROOT/topgrade-boundary.log" output fixture="$TMP_ROOT/topgrade-boundary"
+  mkdir -p "$fixture"
+  cp "$ROOT/home/bin/update-agent-tools" "$fixture/update-agent-tools"
+  cp "$ROOT/home/bin/update-skills" "$fixture/update-skills"
+  cp "$ROOT/home/bin/prune-migration-backups" "$fixture/prune-migration-backups"
+  cat >"$fixture/verify-av" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' verify-av >> "${WORKFLOW_LOG:?}"
+exit 1
+SCRIPT
+  cat >"$fixture/dot-doctor" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' dot-doctor >> "${WORKFLOW_LOG:?}"
+exit 1
+SCRIPT
+  chmod +x "$fixture"/*
+  cat >"$fixture/pi-signed" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'pi-signed %s\n' "$*" >> "${WORKFLOW_LOG:?}"
+SCRIPT
+  chmod +x "$fixture"/*
+  for command in npm no-mistakes treehouse skills update-firstmate pi; do
+    fake_command "$command"
+  done
+  : >"$log"
+  output=$(HOME="$TMP_ROOT/topgrade-home" NPM_CONFIG_PREFIX="$TMP_ROOT/topgrade-npm" \
+    PI_SIGNED_BIN="$fixture/pi-signed" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
+    "$fixture/update-agent-tools") || fail 'updates-only transaction rejected unrelated security helpers'
+  if grep -Eq '^(verify-av|dot-doctor)$' "$log"; then
+    fail 'updates-only transaction invoked an AV or doctor helper'
+  fi
+  assert_contains "$output" 'complete update transaction finished' \
+    'updates-only transaction did not complete without security helpers'
   pass 'full Topgrade custom stage remains updates-only; AV and dot-doctor stay in bootstrap/rebuild'
 }
 test_skills_and_topgrade_boundaries() {
@@ -521,10 +567,15 @@ SCRIPT
 exec "$real_jq" "\$@"
 SCRIPT
   chmod +x "$FAKE/jq"
+  set +e
   HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PI_SIGNED_BIN="$FAKE/pi-signed" \
     PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/doctor.out" || fail 'read-only doctor found a fixture error'
-  assert_file_contains "$TMP_ROOT/doctor.out" 'no blocking issues' 'doctor did not report its result'
+    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/doctor.out" 2>&1
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'doctor trusted an arbitrary PATH Container executable'
+  assert_file_contains "$TMP_ROOT/doctor.out" 'unavailable or its Apple provenance is unproven' \
+    'doctor did not report unproven Container provenance'
   pass 'Nix lock rollback and read-only doctor behavior'
 }
 

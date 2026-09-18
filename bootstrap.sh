@@ -420,55 +420,13 @@ preserve_cursor_leftover() {
   done
 }
 
-verify_apple_container_pkg_signature() {
-  local signature=$1
-  # pkgutil reports the complete certificate chain. Require both the Apple
-  # Developer ID Installer leaf and Apple Root CA anchor; a generic trusted
-  # signature is not sufficient for this privileged install.
-  if ! printf '%s\n' "$signature" | grep -Eq 'Status: signed by a certificate trusted by (Mac OS X|macOS)' \
-    || ! printf '%s\n' "$signature" | awk '
-      /^ *Certificate Chain:/ { in_chain = 1; next }
-      in_chain && /Developer ID Installer: Apple Inc\./ { installer = 1 }
-      in_chain && /Apple Root CA/ { root = 1 }
-      END { exit !(installer && root) }
-  '; then
-    printf '%s\n' "$signature" >&2
-    printf '%s\n' 'bootstrap: expected an Apple Developer ID Installer chain anchored at Apple Root CA' >&2
-    return 1
-  fi
-}
-
-container_provenance_verified() {
-  local container_bin=$1 provenance=$2 recorded_package recorded_binary binary_signature code_signature
-  [ -f "$provenance" ] || return 1
-  [ "$(stat -f '%Su' "$provenance" 2>/dev/null)" = root ] || return 1
-  case "$(stat -f '%Lp' "$provenance" 2>/dev/null)" in 600|400) ;; *) return 1 ;; esac
-  [ -x "$container_bin" ] || return 1
-  check_command pkgutil
-  pkgutil --pkg-info com.apple.container-installer >/dev/null 2>&1 || return 1
-  pkgutil --file-info "$container_bin" 2>/dev/null \
-    | awk '$1 == "pkgid:" && $2 == "com.apple.container-installer" { found = 1 } END { exit !found }' \
-    || return 1
-  check_command codesign
-  codesign --verify --strict "$container_bin" >/dev/null 2>&1 || return 1
-  code_signature=$(codesign --display --verbose=4 "$container_bin" 2>&1) || return 1
-  printf '%s\n' "$code_signature" | grep -Fq 'Authority=Developer ID Application: Apple Inc.' || return 1
-  grep -Fqx 'signer=Developer ID Installer: Apple Inc.' "$provenance" || return 1
-  grep -Fqx 'root=Apple Root CA' "$provenance" || return 1
-  recorded_package=$(sed -n 's/^package_sha256=//p' "$provenance")
-  printf '%s\n' "$recorded_package" | grep -Eq '^[[:xdigit:]]{64}$' || return 1
-  recorded_binary=$(sed -n 's/^binary_sha256=//p' "$provenance")
-  printf '%s\n' "$recorded_binary" | grep -Eq '^[[:xdigit:]]{64}$' || return 1
-  binary_signature=$(shasum -a 256 "$container_bin" | awk '{print $1}') || return 1
-  [ "$recorded_binary" = "$binary_signature" ]
-}
 
 ensure_apple_container() {
   printf '%s\n' '==> Step 13: Apple Container official installer'
   local container_bin=/usr/local/bin/container
   local provenance=/var/db/com.apple.container-installer.provenance
   local needs_install=true
-  if container_provenance_verified "$container_bin" "$provenance"; then
+  if "$DIR/home/bin/verify-apple-container" --installed "$container_bin" "$provenance"; then
     needs_install=false
     printf '    Apple Container installation provenance is verified at %s\n' "$container_bin"
   elif [ -x "$container_bin" ]; then
@@ -498,11 +456,11 @@ ensure_apple_container() {
       printf '%s\n' 'bootstrap: Apple Container package signature validation failed; rerun bootstrap.sh after obtaining the official package' >&2
       return 1
     fi
-    verify_apple_container_pkg_signature "$signature" || {
+    if ! printf '%s\n' "$signature" | "$DIR/home/bin/verify-apple-container" --package-signature; then
       rm -f "$release_json" "$pkg"
       printf '%s\n' 'bootstrap: Apple Container package is not proven to be Apple-signed; rerun bootstrap.sh with the official release' >&2
       return 1
-    }
+    fi
     check_command shasum
     pkg_sha=$(shasum -a 256 "$pkg" | awk '{print $1}') || { rm -f "$release_json" "$pkg"; return 1; }
     printf '%s\n' '    installing Apple Container signed package (administrator approval may be requested)'
@@ -531,7 +489,7 @@ ensure_apple_container() {
       return 1
     fi
     rm -f "$provenance_tmp"
-    if ! container_provenance_verified "$container_bin" "$provenance"; then
+    if ! "$DIR/home/bin/verify-apple-container" --installed "$container_bin" "$provenance"; then
       printf '%s\n' 'bootstrap: installed Apple Container provenance could not be revalidated; refusing to start the service' >&2
       return 1
     fi
