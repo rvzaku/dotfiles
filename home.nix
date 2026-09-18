@@ -10,12 +10,19 @@
 
 let
   backpassConfig =
-    let source = builtins.fromJSON (builtins.readFile ./home/.config/backpass/config.json);
-    in pkgs.writeText "backpass-config.json" (builtins.toJSON (source // {
-      user = source.user // {
-        skillsDir = "${dotfiles}/home/.agents/skills/backpass";
-      };
-    }));
+    let
+      source = builtins.fromJSON (builtins.readFile ./home/.config/backpass/config.json);
+    in
+    pkgs.writeText "backpass-config.json" (
+      builtins.toJSON (
+        source
+        // {
+          user = source.user // {
+            skillsDir = "${dotfiles}/home/.agents/skills/backpass";
+          };
+        }
+      )
+    );
   # The checkout is normally $HOME/dotfiles. apply-darwin.sh passes an
   # explicit root when a fixture or worktree lives elsewhere; this keeps
   # out-of-store links portable without creating a hidden alias.
@@ -25,8 +32,7 @@ let
 
   runtimeArtifact =
     sourceRelative:
-    lib.hasPrefix ".config/herdr/" sourceRelative
-    && sourceRelative != ".config/herdr/config.toml";
+    lib.hasPrefix ".config/herdr/" sourceRelative && sourceRelative != ".config/herdr/config.toml";
 
   # Enumerate only leaf resources. Linking a whole directory would replace
   # existing Pi skills/themes/extensions and would prevent Home Manager from
@@ -51,14 +57,15 @@ let
     ) (builtins.attrNames entries);
 
   fileLink = sourceRelative: {
-    source = if sourceRelative == ".config/backpass/config.json"
-      then backpassConfig
-      else config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/${sourceRelative}";
+    source =
+      if sourceRelative == ".config/backpass/config.json" then
+        backpassConfig
+      else
+        config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/${sourceRelative}";
     # Collision adoption runs immediately before Home Manager's own check.
     # Do not use Home Manager's force escape hatch: unknown paths must remain
     # protected and a failed adoption must fail closed.
   };
-
 
   directoryPairs =
     sourcePrefix: targetPrefix:
@@ -194,18 +201,19 @@ let
     }
   ];
 
-  targetIsExistingSymlink = target:
+  targetIsExistingSymlink =
+    target:
     let
       evaluationHome = builtins.getEnv "DOTFILES_HOME";
       targetPath = "${homeDirectory}/${target}";
-      targetType = if builtins.pathExists targetPath
-        then builtins.readFileType targetPath
-        else "missing";
-    in evaluationHome != ""
-      && targetType == "symlink";
+      targetType = if builtins.pathExists targetPath then builtins.readFileType targetPath else "missing";
+    in
+    evaluationHome != "" && targetType == "symlink";
 
   managedPairs =
-    explicitPairs ++ publicBinPairs ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
+    explicitPairs
+    ++ publicBinPairs
+    ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
 
   # Existing symlinks are handled by prepare-managed-paths: known Home
   # Manager generations are backed up and relinked, while unknown links are
@@ -213,16 +221,18 @@ let
   # unrelated convergence.
   convergedPairs = lib.filter (pair: !(targetIsExistingSymlink pair.target)) managedPairs;
 
-  managedFiles = lib.listToAttrs (
-    map ({ source, target }: {
-      name = target;
-      value = fileLink source;
-    }) convergedPairs
-  ) // lib.optionalAttrs (!(targetIsExistingSymlink ".pi/agent/settings.json")) {
-    ".pi/agent/settings.json" = {
-      source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
+  managedFiles =
+    lib.listToAttrs (
+      map ({ source, target }: {
+        name = target;
+        value = fileLink source;
+      }) convergedPairs
+    )
+    // lib.optionalAttrs (!(targetIsExistingSymlink ".pi/agent/settings.json")) {
+      ".pi/agent/settings.json" = {
+        source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
+      };
     };
-  };
 in
 {
   home.username = user;
@@ -335,7 +345,7 @@ in
     zls
 
     # Pi is the globally available coding-agent CLI; its authored settings and
-    # pinned extensions live below home/.pi/agent.
+    # package declarations live below home/.pi/agent.
     pi-coding-agent
 
     # Keep existing typography and add the common terminal/editor families.
@@ -373,7 +383,7 @@ in
     PNPM_HOME = "${homeDirectory}/.local/share/pnpm";
   };
 
-  # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
+  # Create the user-owned npm and pnpm prefixes before activation installs tools.
   home.activation.ensureUserNpmPrefix = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     mkdir -p ${lib.escapeShellArg "${homeDirectory}/.local/npm/bin"} \
       ${lib.escapeShellArg "${homeDirectory}/.local/npm/lib"} \
@@ -502,7 +512,14 @@ in
     ${
       lib.concatMapStrings (
         pair:
-        "      printf '%s\\0%s\\0' ${lib.escapeShellArg pair.target} ${lib.escapeShellArg (if pair.source == ".config/backpass/config.json" then backpassConfig else "${dotfiles}/home/${pair.source}")}\n"
+        "      printf '%s\\0%s\\0' ${lib.escapeShellArg pair.target} ${
+                lib.escapeShellArg (
+                  if pair.source == ".config/backpass/config.json" then
+                    backpassConfig
+                  else
+                    "${dotfiles}/home/${pair.source}"
+                )
+              }\n"
       ) managedPairs
     }    } > "$manifest"
         {

@@ -29,11 +29,6 @@ intentional `cleanup = "zap"`. Interactive switches require confirmation;
 non-interactive runs should set `DOTFILES_ASSUME_HOMEBREW_ZAP=1` to make the
 operator's acknowledgement explicit. The warning is always printed before the
 switch.
-Every switch prints a warning immediately before nix-darwin runs Homebrew's
-intentional `cleanup = "zap"`. Interactive switches require confirmation;
-non-interactive runs should set `DOTFILES_ASSUME_HOMEBREW_ZAP=1` to make the
-operator's acknowledgement explicit. The warning is always printed before the
-switch.
 
 The activated PATH is deliberately ordered with `/usr/bin`, Homebrew, and Nix
 system bins before writable `~/.local/*`, `~/firstmate/bin`, and pnpm bins.

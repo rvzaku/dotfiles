@@ -14,7 +14,14 @@
     nix-homebrew.url = "github:zhaofengli/nix-homebrew";
   };
 
-  outputs = inputs@{ self, nix-darwin, nix-homebrew, home-manager, nixpkgs }:
+  outputs =
+    inputs@{
+      self,
+      nix-darwin,
+      nix-homebrew,
+      home-manager,
+      nixpkgs,
+    }:
     let
       # `apply-darwin` supplies these impure values from the current Mac. The
       # deterministic fallback keeps pure flake checks evaluable without
@@ -26,8 +33,10 @@
       envHome = builtins.getEnv "DOTFILES_HOME";
       homeDirectory = if envHome != "" then envHome else "/Users/${user}";
       dotfilesRoot =
-        let fromEnvironment = builtins.getEnv "DOTFILES_ROOT";
-        in if fromEnvironment != "" then fromEnvironment else "/Users/${user}/dotfiles";
+        let
+          fromEnvironment = builtins.getEnv "DOTFILES_ROOT";
+        in
+        if fromEnvironment != "" then fromEnvironment else "/Users/${user}/dotfiles";
     in
     {
       darwinConfigurations."${host}" = nix-darwin.lib.darwinSystem {

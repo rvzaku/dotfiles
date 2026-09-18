@@ -117,11 +117,12 @@ Edit the config files in place, then apply:
 That's it.
 No separate build-and-copy step.
 
-`./rebuild.sh` is safe to rerun after an interrupted bootstrap and does not
-replace or remove any user path. The
-same pinned npm tools and wrappers are available in a fresh login through
-`~/.local/bin` and `~/firstmate/bin`; `update-agent-tools` also adds those
-directories when Topgrade runs from an older shell.
+`./rebuild.sh` is safe to rerun after an interrupted bootstrap. It adopts only
+declared leaves, preserves unknown paths, and keeps recoverable backups; the
+acknowledged Homebrew zap policy still applies. The same pinned npm tools and
+wrappers are available in a fresh login through `~/.local/bin` and
+`~/firstmate/bin`; `update-agent-tools` also adds those directories when
+Topgrade runs from an older shell.
 
 ## Make it yours
 
@@ -149,8 +150,8 @@ programs.git = {
 ```
 
 **Homebrew cleanup warning:** `configuration.nix` sets `homebrew.onActivation.cleanup = "zap"`.
-That means every time you switch, Homebrew removes any package or cask on your machine that isn't listed in the `brews` and `casks` arrays in `configuration.nix`.
-If you already have Homebrew stuff installed that isn't in that list, the first switch will uninstall it.
+On an acknowledged switch, Homebrew removes any package or cask on your machine that isn't listed in the `brews` and `casks` arrays in `configuration.nix`.
+If you already have Homebrew stuff installed that isn't in that list, an own-machine switch will uninstall it; protective machines print the exact inventory and stop before activation until the owner confirms.
 Read through `brews` and `casks` before you run `bootstrap.sh` or `rebuild.sh` for the first time, and add anything you want to keep.
 
 **About `herdr`:** it's in the `brews` list.
@@ -173,14 +174,20 @@ Secrets, approvals, authorization history, and vault state stay in Automic Vault
 - `flake.nix` - the entry point.
   Wires up nixpkgs, nix-darwin, home-manager, and nix-homebrew, and declares the `mac` machine.
 - `configuration.nix` - system-level config: macOS defaults, Homebrew.
-- `home.nix` - user-level config: shell, packages, prompt, and the symlinks described below.
+- `home.nix` - user-level config: shell, packages, prompt, and managed leaves
+  described below.
 - `rebuild.sh` - re-applies the config after the first switch.
   Run this every time you make a change.
-- `home/` - the actual config files that get symlinked into place; the sections below explain the shared symlink model and Pi's narrower selective setup.
+- `home/` - authored config and agent resources; selected leaves are linked or
+  materialized into place, as described below, with Pi using narrower additive
+  setup.
 
 ## How the symlinks work
 
-The files under `home/` are the real files - editing them here is editing your live config, no rebuild needed to see the change in your editor.
+Repository-authored linked leaves under `home/` are the real files, so editing
+them here updates the live config without a rebuild. Generated or runtime-owned
+leaves (such as Backpass, Firstmate, and composed Pi settings) are exceptions;
+their helpers materialize state during activation or update.
 `home.nix` uses additive leaf `mkOutOfStoreSymlink` links, so paths like
 `~/.config/nvim` read from this repo without replacing a pre-existing config
 directory. Existing files at declared leaves are moved byte-for-byte to a
@@ -216,7 +223,7 @@ configured writable source is this checkout's `home/AGENTS.md` and
 
 ## Pi configuration
 
-Pi is declared in `home.packages` and its pinned package resources are managed
+Pi is declared in `home.packages` and its package resources are managed
 by `home/.pi/agent/settings.json`.
 
 [Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is declared from its owner tap so the signed launcher can be preferred:

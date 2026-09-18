@@ -59,8 +59,9 @@ reviewable, and requirement-backed.
   auto-commit/push/rebase, full Topgrade, or FirstMate source mutation.
 - Plain `topgrade` is the complete update transaction. Its custom stage fetches
   Kun FirstMate safely, updates native ecosystems, npm tools, Pi/package
-  surfaces, and every globally registered Skill exactly once, verifies AV and
-  doctor state, and prunes eligible backups only after success. Targeted forms
+  surfaces, and every globally registered Skill exactly once, then prunes
+  eligible backups only after success. Bootstrap and rebuild own the AV and
+  doctor gates; targeted forms
   (`--dry-run`, `--only`) remain targeted. No update helper auto-commits or
   pushes. Homebrew zap is always declared. Bootstrap records an outside-Git
   `~/.config/dotfiles/machine-role` marker; protective machines print the exact

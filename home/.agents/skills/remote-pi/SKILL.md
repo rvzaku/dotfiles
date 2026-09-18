@@ -7,7 +7,7 @@ description: Use only when the operator explicitly invokes Remote Pi or asks to 
 
 # Remote Pi
 
-Remote Pi is installed as the pinned `npm:remote-pi@0.7.0` Pi package. Use its explicit `/remote-pi` command only after the operator asks for remote Pi, session sharing, or agent-network coordination.
+Remote Pi is declared as the intentionally unpinned `npm:remote-pi` Pi package. Use its explicit `/remote-pi` command only after the operator asks for remote Pi, session sharing, or agent-network coordination.
 
 - First use `/remote-pi setup`; choose a local-only session unless relay access is explicitly requested.
 - Treat every peer address returned by `list_peers` as an opaque routing key. Copy it verbatim and echo message IDs in replies.
