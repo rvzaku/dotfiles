@@ -20,6 +20,7 @@ case "${1:-}" in
   *) printf '%s\n' 'usage: ./bootstrap.sh [--from-scratch]' >&2 ; exit 2 ;;
 esac
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+trusted_shasum=/usr/bin/shasum
 
 load_nix_profile() {
   local profile=/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
@@ -113,7 +114,8 @@ ensure_nix() {
     local installer_url='https://github.com/DeterminateSystems/nix-installer/releases/download/v3.22.4/nix-installer-aarch64-darwin'
     local installer_sha256='5637169e5ae9ccd168842988d874efb721a8b4522053474cb46d80ae3a9727ad'
     curl --proto '=https' --tlsv1.2 -sSfL "$installer_url" -o "$installer"
-    printf '%s  %s\n' "$installer_sha256" "$installer" | shasum -a 256 -c -
+    [ -x "$trusted_shasum" ] || { printf '%s\n' 'bootstrap: trusted shasum is unavailable; refusing installer execution' >&2; return 1; }
+    printf '%s  %s\n' "$installer_sha256" "$installer" | "$trusted_shasum" -a 256 -c -
     chmod 755 "$installer"
     "$installer" install --no-confirm
     rm -f "$installer"
@@ -461,8 +463,8 @@ ensure_apple_container() {
       printf '%s\n' 'bootstrap: Apple Container package is not proven to be Apple-signed; rerun bootstrap.sh with the official release' >&2
       return 1
     fi
-    check_command shasum
-    pkg_sha=$(shasum -a 256 "$pkg" | awk '{print $1}') || { rm -f "$release_json" "$pkg"; return 1; }
+    [ -x "$trusted_shasum" ] || { rm -f "$release_json" "$pkg"; printf '%s\n' 'bootstrap: trusted shasum is unavailable; refusing package installation' >&2; return 1; }
+    pkg_sha=$("$trusted_shasum" -a 256 "$pkg" | awk '{print $1}') || { rm -f "$release_json" "$pkg"; return 1; }
     printf '%s\n' '    installing Apple Container signed package (administrator approval may be requested)'
     sudo installer -pkg "$pkg" -target /
     rm -f "$release_json" "$pkg"
@@ -475,7 +477,7 @@ ensure_apple_container() {
       printf 'bootstrap: installed Container binary failed code-signature verification at %s\n' "$container_bin" >&2
       return 1
     }
-    binary_sha=$(shasum -a 256 "$container_bin" | awk '{print $1}') || return 1
+    binary_sha=$("$trusted_shasum" -a 256 "$container_bin" | awk '{print $1}') || return 1
     provenance_tmp="${TMPDIR:-/tmp}/container-provenance.$$.tmp"
     {
       printf 'package_sha256=%s\n' "$pkg_sha"

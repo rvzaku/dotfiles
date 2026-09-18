@@ -8,10 +8,12 @@ case "$tool" in
 esac
 
 user_profile=''
-if [ -n "${USER:-}" ]; then
-  user_profile="/etc/profiles/per-user/$USER/bin"
-elif [ -x /usr/bin/id ]; then
-  user_profile="/etc/profiles/per-user/$(/usr/bin/id -un 2>/dev/null)/bin"
+if [ -x /usr/bin/id ]; then
+  user_name=$(/usr/bin/id -un 2>/dev/null || true)
+  case "$user_name" in
+    ''|*[!A-Za-z0-9._-]*) ;;
+    *) user_profile="/etc/profiles/per-user/$user_name/bin" ;;
+  esac
 fi
 for directory in \
   /usr/bin /bin /usr/sbin /sbin \
