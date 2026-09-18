@@ -30,6 +30,10 @@ load_nix_profile() {
   fi
 }
 
+redact_origin() {
+  /usr/bin/sed -E 's#^([[:alnum:]+.-]+://)[^/@]*@#\1<redacted>@#'
+}
+
 check_command() {
   command -v "$1" >/dev/null 2>&1 || {
     printf 'bootstrap: required command %s is unavailable\n' "$1" >&2
@@ -382,7 +386,7 @@ managed_security_gate() {
 }
 
 verify_firstmate_checkout() {
-  local firstmate=$1 origin
+  local firstmate=$1 origin safe_origin
   if [ ! -e "$firstmate/.git" ]; then
     printf 'bootstrap: Firstmate checkout is missing its .git metadata at %s\n' "$firstmate" >&2
     return 1
@@ -390,7 +394,7 @@ verify_firstmate_checkout() {
   origin=$(git -C "$firstmate" remote get-url origin 2>/dev/null || true)
   case "$origin" in
     https://github.com/kunchenguid/firstmate.git|https://github.com/kunchenguid/firstmate|git@github.com:kunchenguid/firstmate.git) ;;
-    *) printf 'bootstrap: refusing a Firstmate checkout whose origin is not Kun upstream: %s\n' "${origin:-<missing>}" >&2; return 1 ;;
+    *) safe_origin=$(printf '%s\n' "${origin:-<missing>}" | redact_origin); printf 'bootstrap: refusing a Firstmate checkout whose origin is not Kun upstream: %s\n' "$safe_origin" >&2; return 1 ;;
   esac
   [ -f "$firstmate/AGENTS.md" ] && [ -x "$firstmate/bin/fm-bootstrap.sh" ] || {
     printf '%s\n' 'bootstrap: existing checkout is not a recognizable Firstmate source tree' >&2

@@ -26,5 +26,6 @@ if [ -e "$firstmate_home/.git" ]; then
   }
 else
   printf '%s\n' 'rebuild: Firstmate checkout is absent; run bootstrap.sh to clone it and materialize captain config' >&2
+  exit 1
 fi
 verify_av

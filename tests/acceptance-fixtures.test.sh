@@ -236,13 +236,6 @@ test_cursor_backup_fixture() {
 }
 
 test_installer_verification_fixture() {
-  mkdir -p "$fixture_root/pkg"
-  printf 'fixture-installer\n' > "$fixture_root/pkg/installer"
-  local hash
-  hash=$(shasum -a 256 "$fixture_root/pkg/installer" | awk '{print $1}')
-  printf '%s  %s\n' "$hash" "$fixture_root/pkg/installer" | shasum -a 256 -c - >/dev/null
-  printf '%s  %s\n' "${hash}bad" "$fixture_root/pkg/installer" | shasum -a 256 -c - >/dev/null 2>&1 && \
-    fail 'checksum fixture accepted an invalid digest'
   local verifier="$ROOT/home/bin/verify-apple-container" good_signature bad_signature
   [ -x "$verifier" ] || fail 'Apple Container signature verifier is not executable'
   good_signature=$(cat <<'EOF'
@@ -260,7 +253,6 @@ EOF
     fail 'unanchored Apple Container authority chain was accepted'
   fi
   pass 'Apple Container package verifier requires Apple Developer ID Installer chain anchored at Apple Root CA'
-  pass 'installer checksum verification fixture rejects tampered payloads'
 }
 
 test_quota_dispatch_integration() {

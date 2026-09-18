@@ -333,7 +333,7 @@ SCRIPT
   done
   : >"$log"
   output=$(HOME="$TMP_ROOT/topgrade-home" NPM_CONFIG_PREFIX="$TMP_ROOT/topgrade-npm" \
-    PI_SIGNED_BIN="$fixture/pi-signed" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" PI_SIGNED_BIN="$fixture/pi-signed" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
     "$fixture/update-agent-tools") || fail 'updates-only transaction rejected unrelated security helpers'
   if grep -Eq '^(verify-av|dot-doctor)$' "$log"; then
     fail 'updates-only transaction invoked an AV or doctor helper'
@@ -364,7 +364,7 @@ test_skills_and_topgrade_boundaries() {
   if grep -F -- '--all' "$log" >/dev/null 2>&1; then fail 'Skills seeding used --all and installed unselected skills'; fi
   : >"$log"
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
-    PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
   [ "$(grep -c '^skills update --global --yes$' "$log")" -eq 1 ] \
     || fail 'global Skills registry update did not run exactly once for agent-stuff'
@@ -394,7 +394,7 @@ SCRIPT
   chmod +x "$FAKE/update-firstmate"
   set +e
   output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$TMP_ROOT/failure.log" \
-    PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
     PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
   local status=$?
   set -e
@@ -422,7 +422,7 @@ SCRIPT
   done
   cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
   output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
-    NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
     PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
     "$ROOT/home/bin/update-agent-tools") \
     || fail 'Nix npm prefix prevented the full update transaction'

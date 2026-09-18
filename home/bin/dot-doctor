@@ -43,6 +43,7 @@ problems=0
 degraded=0
 pass_check() { printf 'dot-doctor: PASS - %s\n' "$1"; }
 fail_check() { printf 'dot-doctor: FAIL - %s\n' "$1" >&2; problems=$((problems + 1)); }
+redact_origin() { /usr/bin/sed -E 's#^([[:alnum:]+.-]+://)[^/@]*@#\1<redacted>@#'; }
 degraded_check() { printf 'dot-doctor: DEGRADED - %s\n' "$1" >&2; degraded=$((degraded + 1)); }
 
 find_pi_signed() {
@@ -154,7 +155,7 @@ if [ -e "$firstmate_home/.git" ]; then
   case "$firstmate_origin" in
     https://github.com/kunchenguid/firstmate.git|https://github.com/kunchenguid/firstmate|git@github.com:kunchenguid/firstmate.git) pass_check 'Firstmate origin is Kun upstream' ;;
     '') degraded_check 'Firstmate origin is not configured' ;;
-    *) fail_check "Firstmate origin is not Kun upstream: $firstmate_origin" ;;
+    *) fail_check "Firstmate origin is not Kun upstream: $(printf '%s\n' "$firstmate_origin" | redact_origin)" ;;
   esac
 fi
 
@@ -314,7 +315,7 @@ git_origin=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
 case "$git_origin" in
   https://github.com/rvzaku/dotfiles.git|git@github.com:rvzaku/dotfiles.git) pass_check 'dotfiles origin is rvzaku/dotfiles' ;;
   '') degraded_check 'dotfiles origin is not configured' ;;
-  *) degraded_check "dotfiles origin is unexpected: $git_origin" ;;
+  *) degraded_check "dotfiles origin is unexpected: $(printf '%s\n' "$git_origin" | redact_origin)" ;;
 esac
 if git -C "$ROOT" remote get-url upstream >/dev/null 2>&1; then
   pass_check 'Kun dotfiles upstream remote is configured'

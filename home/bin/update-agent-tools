@@ -48,13 +48,12 @@ resolve_dotfiles_root() {
 }
 dotfiles_root=$(resolve_dotfiles_root 2>/dev/null || true)
 fetch_kun_dotfiles() {
-  [ "${DOTFILES_FULL_UPDATE:-}" = 1 ] || return 0
   if [ -z "$dotfiles_root" ]; then
     printf '%s\n' 'dotfiles: cannot resolve checkout root for Kun upstream fetch' >&2
     return 1
   fi
-  local fetch_refspec='+refs/heads/*:refs/remotes/dotfiles-kun/*'
-  if git -C "$dotfiles_root" fetch --prune https://github.com/kunchenguid/dotfiles.git "$fetch_refspec"; then
+  local fetch_refspec='+refs/heads/*:refs/remotes/dotfiles-kun/*' upstream_url="${DOTFILES_KUN_UPSTREAM:-https://github.com/kunchenguid/dotfiles.git}"
+  if git -C "$dotfiles_root" fetch --prune "$upstream_url" "$fetch_refspec"; then
     printf '%s\n' 'dotfiles: fetched Kun upstream without merging or rewriting local work'
     return 0
   fi
