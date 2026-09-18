@@ -1,0 +1,596 @@
+#!/usr/bin/env bash
+# Portable regression checks for the mutable bootstrap/update boundaries.
+# These fixtures never call a real Homebrew, Nix switch, Pi provider, or
+# Firstmate checkout outside their temporary directories.
+set -u
+
+# shellcheck disable=SC1091
+# shellcheck source=tests/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+TMP_ROOT=$(dotfiles_test_tmproot agent-workflows)
+FAKE="$TMP_ROOT/fake"
+mkdir -p "$FAKE"
+
+fake_command() {
+  local name=$1
+  cat >"$FAKE/$name" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "$(basename "$0") $*" >> "${WORKFLOW_LOG:?}"
+exit "${FAKE_STATUS:-0}"
+SCRIPT
+  chmod +x "$FAKE/$name"
+}
+
+trusted_agent_tool_present() {
+  local tool directory
+  for tool in no-mistakes treehouse pi-signed; do
+    for directory in /usr/bin /bin /opt/homebrew/bin /opt/homebrew/sbin /run/current-system/sw/bin /nix/var/nix/profiles/default/bin /usr/local/bin; do
+      [ -x "$directory/$tool" ] && return 0
+    done
+  done
+  return 1
+}
+
+assert_file_contains() {
+  local file=$1 text=$2 message=$3
+  grep -Fq "$text" "$file" || fail "$message"
+}
+
+test_public_commands() {
+  command -v nix >/dev/null 2>&1 || fail "nix is required to verify public command links"
+  command -v jq >/dev/null 2>&1 || fail "jq is required to verify public command links"
+  local actual expected
+  actual=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
+    "$ROOT#darwinConfigurations.mac.config.home-manager.users.nobody" \
+    --apply '
+      cfg:
+      let names = builtins.attrNames cfg.home.file;
+      in builtins.filter (name: builtins.match "\\.local/bin/.*" name != null) names
+    ') || fail "could not evaluate public command links"
+  actual=$(printf '%s' "$actual" | jq -c 'sort')
+  expected=$(printf '%s\n' \
+    '.local/bin/rebuild' \
+    '.local/bin/topgrade-raw' \
+    '.local/bin/agent-claude-yolo' \
+    '.local/bin/agent-codex-yolo' \
+    '.local/bin/agent-grok-yolo' \
+    '.local/bin/agent-opencode-yolo' \
+    '.local/bin/agent-pi-yolo' \
+    '.local/bin/backpass-apply-qualified' \
+    '.local/bin/dot-doctor' \
+    '.local/bin/ensure-agent-tools' \
+    '.local/bin/update-agent-tools' \
+    '.local/bin/update-firstmate' \
+    | jq -R . | jq -cs 'sort')
+  [ "$actual" = "$expected" ] || fail "Home Manager public command allowlist changed: $actual"
+  if printf '%s' "$actual" | jq -e 'index(".local/bin/mate")' >/dev/null; then
+    fail 'mate command leaked into public command links'
+  fi
+  for command in apply-darwin prepare-managed-paths prepare-pi-settings prepare-claude-settings prune-migration-backups update-skills resolve-trusted-tool verify-apple-container; do
+    [ -x "$ROOT/home/bin/$command" ] || fail "repository helper $command is not executable"
+  done
+  pass 'public command links are allowlisted and helpers stay private'
+}
+
+test_pi_package_resource_ownership() {
+  if ! command -v pi-signed >/dev/null 2>&1; then
+    echo 'skip: pi-signed unavailable for package resource ownership probe'
+    return 0
+  fi
+  command -v jq >/dev/null 2>&1 || fail 'jq is required for Pi package ownership probe'
+
+  local fixture="$TMP_ROOT/pi-package-ownership"
+  local derived_home="$fixture/derived-home" root_home="$fixture/root-home"
+  local agent="$derived_home/.pi/agent"
+  local package="$agent/npm/node_modules/mitsupi"
+  mkdir -p "$package/extensions" "$package/skills" "$agent/extensions" "$agent/skills/github"
+  cat >"$package/package.json" <<'JSON'
+{"name":"mitsupi","version":"1.0.0","type":"module","pi":{"extensions":["./extensions"],"skills":["./skills"]}}
+JSON
+  cat >"$package/extensions/context.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('mitsupi-context', { description: 'package-only context' }); }
+TS
+  cat >"$package/extensions/go-to-bed.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('mitsupi-bed', { description: 'package-only bed' }); }
+TS
+  cat >"$package/extensions/loop.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('mitsupi-loop', { description: 'package-only loop' }); }
+TS
+  cat >"$package/extensions/control.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-control', { description: 'package control' }); }
+TS
+  cat >"$package/extensions/multi-edit.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-edit', { description: 'package multi-edit' }); }
+TS
+  cat >"$agent/extensions/control.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-control', { description: 'user control' }); }
+TS
+  cat >"$agent/extensions/unified-edit.ts" <<'TS'
+export default function (pi: any) { pi.registerFlag('shared-edit', { description: 'user unified-edit' }); }
+TS
+  mkdir -p "$package/skills/frontend-design" "$package/skills/mermaid" "$package/skills/github"
+  cat >"$package/skills/frontend-design/SKILL.md" <<'SKILL'
+---
+name: frontend-design
+description: Package-only frontend design fixture.
+---
+# frontend-design fixture
+SKILL
+  cat >"$package/skills/mermaid/SKILL.md" <<'SKILL'
+---
+name: mermaid
+description: Package-only Mermaid fixture.
+---
+# mermaid fixture
+SKILL
+  cat >"$package/skills/github/SKILL.md" <<'SKILL'
+---
+name: github
+description: Duplicate user skill fixture.
+---
+# github duplicate fixture
+SKILL
+  cp "$package/skills/github/SKILL.md" "$agent/skills/github/SKILL.md"
+  cat >"$agent/settings.json" <<'JSON'
+{
+  "customSetting": "preserve-me",
+  "packages": [
+    "npm:mitsupi",
+    {"source":"npm:mitsupi","existingPackageField":{"keepExisting":true}},
+    {"source":"npm:mitsupi","customPackageField":{"keep":true}}
+  ]
+}
+JSON
+  HOME="$root_home" DOTFILES_HOME="$derived_home" \
+    "$ROOT/home/bin/prepare-pi-settings" "$agent/settings.json" "$(command -v jq)" \
+    || fail 'duplicate-rich Pi settings preparation failed'
+  jq -e '.customSetting == "preserve-me"' "$agent/settings.json" >/dev/null \
+    || fail 'Pi settings preparation discarded an unknown root setting'
+  jq -e '
+    ([.packages[] | select(type == "object" and .source == "npm:mitsupi")] | length) == 1
+    and ([.packages[] | select(type == "string" and . == "npm:mitsupi")] | length) == 0
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].customPackageField.keep == true)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].existingPackageField.keepExisting == true)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].extensions | index("!extensions/control.ts")) != null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].extensions | index("!extensions/multi-edit.ts")) != null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].skills | index("!skills/github/SKILL.md")) != null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].extensions | index("!extensions/context.ts")) == null
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].skills | index("!skills/frontend-design/SKILL.md")) == null
+  ' "$agent/settings.json" >/dev/null || fail 'duplicate-rich Pi filters did not preserve package-only resources'
+
+  local output="$fixture/duplicate-help.out" errors="$fixture/duplicate-help.err"
+  mkdir -p "$root_home"
+  PI_CODING_AGENT_DIR="$agent" HOME="$root_home" pi-signed --help >"$output" 2>"$errors" \
+    || fail 'pi-signed duplicate-rich resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$errors"; then
+    fail "duplicate-rich pi-signed startup reported a resource conflict: $(cat "$errors")"
+  fi
+  local flag
+  for flag in shared-control shared-edit mitsupi-context mitsupi-bed mitsupi-loop; do
+    [ "$(grep -c -- "--$flag" "$output")" -eq 1 ] \
+      || fail "duplicate-rich Pi probe did not load exactly one owner for --$flag"
+  done
+
+  # Package-only skills remain discoverable alongside the local skill owner.
+  printf '%s\n' '{"type":"get_commands"}' | PI_CODING_AGENT_DIR="$agent" HOME="$root_home" \
+    pi-signed --mode rpc --no-session >"$fixture/duplicate-rpc.out" 2>"$fixture/duplicate-rpc.err" \
+    || fail 'duplicate-rich Pi skill resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$fixture/duplicate-rpc.err"; then
+    fail "duplicate-rich Pi skill probe reported a conflict: $(cat "$fixture/duplicate-rpc.err")"
+  fi
+  jq -e '
+    ([.data.commands[] | select(.name == "skill:frontend-design")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:mermaid")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:github")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:github")][0].sourceInfo.origin == "top-level")
+  ' "$fixture/duplicate-rpc.out" >/dev/null \
+    || fail 'duplicate-rich Pi skill probe did not keep package-only skills or remove duplicate skill'
+
+  # Fresh installs have no customized user resources: package-only extensions
+  # and skills must remain discoverable, including frontend-design and mermaid.
+  local fresh="$fixture/fresh-home"
+  local fresh_agent="$fresh/.pi/agent"
+  mkdir -p "$fresh_agent/npm/node_modules"
+  cp -R "$agent/npm/node_modules/mitsupi" "$fresh_agent/npm/node_modules/"
+  cat >"$fresh_agent/settings.json" <<'JSON'
+{"customSetting":"fresh-preserve","packages":[{"source":"npm:mitsupi","customPackageField":{"fresh":true}}]}
+JSON
+  HOME="$fresh" DOTFILES_HOME="$fresh" \
+    "$ROOT/home/bin/prepare-pi-settings" "$fresh_agent/settings.json" "$(command -v jq)" \
+    || fail 'fresh Pi settings preparation failed'
+  jq -e '
+    .customSetting == "fresh-preserve"
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0].customPackageField.fresh == true)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0] | has("extensions") | not)
+    and ([.packages[] | select(type == "object" and .source == "npm:mitsupi")][0] | has("skills") | not)
+  ' "$fresh_agent/settings.json" >/dev/null || fail 'fresh Pi filters incorrectly removed package resources'
+  mkdir -p "$fresh"
+  PI_CODING_AGENT_DIR="$fresh_agent" HOME="$fresh" pi-signed --help >"$fixture/fresh-help.out" 2>"$fixture/fresh-help.err" \
+    || fail 'pi-signed fresh resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$fixture/fresh-help.err"; then
+    fail "fresh pi-signed startup reported a resource conflict: $(cat "$fixture/fresh-help.err")"
+  fi
+  for flag in shared-control shared-edit mitsupi-context mitsupi-bed mitsupi-loop; do
+    [ "$(grep -c -- "--$flag" "$fixture/fresh-help.out")" -eq 1 ] \
+      || fail "fresh Pi probe did not load package resource --$flag"
+  done
+  printf '%s\n' '{"type":"get_commands"}' | PI_CODING_AGENT_DIR="$fresh_agent" HOME="$fresh" \
+    pi-signed --mode rpc --no-session >"$fixture/fresh-rpc.out" 2>"$fixture/fresh-rpc.err" \
+    || fail 'fresh Pi skill resource probe failed'
+  if grep -Eiq 'duplicate|conflicts|already registered|cannot load extension|failed to load' "$fixture/fresh-rpc.err"; then
+    fail "fresh Pi skill probe reported a conflict: $(cat "$fixture/fresh-rpc.err")"
+  fi
+  jq -e '
+    ([.data.commands[] | select(.name == "skill:frontend-design")] | length) == 1
+    and ([.data.commands[] | select(.name == "skill:mermaid")] | length) == 1
+  ' "$fixture/fresh-rpc.out" >/dev/null \
+    || fail 'fresh Pi skill probe did not discover package-only skills'
+  pass 'Pi package filters dynamically preserve package-only resources, local owners, unknown settings, and clean startup'
+}
+
+test_pi_preference_and_degradation() {
+  local log="$TMP_ROOT/pi.log"
+  : >"$log"
+  cat >"$FAKE/pi-signed" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'signed %s\n' "$*" >> "$PI_TEST_LOG"
+SCRIPT
+  cat >"$FAKE/pi" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'plain %s\n' "$*" >> "$PI_TEST_LOG"
+SCRIPT
+  chmod +x "$FAKE/pi-signed" "$FAKE/pi"
+  PI_TEST_LOG="$log" PI_SIGNED_BIN="$FAKE/pi-signed" PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" hello
+  assert_file_contains "$log" 'signed --approve hello' 'signed Pi was not preferred'
+  if { [ -x /opt/homebrew/bin/pi-signed ] && /opt/homebrew/bin/pi-signed --version >/dev/null 2>&1; } \
+    || { [ -x /usr/local/bin/pi-signed ] && /usr/local/bin/pi-signed --version >/dev/null 2>&1; }; then
+    rm -f "$FAKE/pi-signed" "$FAKE/pi"
+    pass 'Pi signed launcher is available; plain fallback fixture is skipped'
+    return 0
+  fi
+  rm "$FAKE/pi-signed"
+  PI_TEST_LOG="$log" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" fallback
+  assert_file_contains "$log" 'plain --approve fallback' 'plain Pi fallback was not used'
+  rm "$FAKE/pi"
+  PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/agent-pi-yolo" degraded
+  pass 'Pi prefers pi-signed, falls back to pi, and degrades without either'
+}
+
+test_av_authority_blocks_high_findings() {
+  local status jq_bin fixture="$TMP_ROOT/verify-av-fixture"
+  mkdir -p "$fixture"
+  jq_bin=$(command -v jq)
+  cp "$ROOT/home/bin/verify-av" "$fixture/verify-av"
+  cat >"$fixture/resolve-trusted-tool" <<SCRIPT
+#!/usr/bin/env bash
+case "\${1:-}" in
+  av) printf '%s\\n' "$FAKE/av" ;;
+  jq) printf '%s\\n' "$jq_bin" ;;
+  *) exit 2 ;;
+esac
+SCRIPT
+  chmod +x "$fixture/verify-av" "$fixture/resolve-trusted-tool"
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
+  'scan --json') printf '{"findings":[{"severity":"high"}]}\n' ;;
+  *) exit 2 ;;
+esac
+SCRIPT
+  chmod +x "$FAKE/av"
+  set +e
+  "$fixture/verify-av" test >"$TMP_ROOT/av-doctor.out" 2>&1
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'AV gate claimed success with a HIGH finding'
+  assert_file_contains "$TMP_ROOT/av-doctor.out" 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' \
+    'Automic Vault blocking finding was not reported'
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1 $2" in
+  'doctor --json') printf '{"results":[{"issues":[]}]}' ;;
+  'scan --json') printf '{"findings":[{"severity":"low"}]}' ;;
+  *) exit 2 ;;
+esac
+SCRIPT
+  chmod +x "$FAKE/av"
+  "$fixture/verify-av" test >"$TMP_ROOT/av-low.out" 2>&1 \
+    || fail 'AV gate rejected a non-blocking LOW finding'
+  rm -f "$FAKE/av"
+  pass 'Automic Vault HIGH/CRITICAL findings block managed security success'
+}
+
+test_topgrade_updates_only_boundary() {
+  if trusted_agent_tool_present; then
+    pass 'Trusted agent tools present; updates-only boundary fixture skipped'
+    return 0
+  fi
+  local log="$TMP_ROOT/topgrade-boundary.log" output fixture="$TMP_ROOT/topgrade-boundary"
+  mkdir -p "$fixture"
+  cp "$ROOT/home/bin/update-agent-tools" "$fixture/update-agent-tools"
+  cp "$ROOT/home/bin/update-skills" "$fixture/update-skills"
+  cp "$ROOT/home/bin/prune-migration-backups" "$fixture/prune-migration-backups"
+  cat >"$fixture/verify-av" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' verify-av >> "${WORKFLOW_LOG:?}"
+exit 1
+SCRIPT
+  cat >"$fixture/dot-doctor" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' dot-doctor >> "${WORKFLOW_LOG:?}"
+exit 1
+SCRIPT
+  chmod +x "$fixture"/*
+  cat >"$fixture/pi-signed" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'pi-signed %s\n' "$*" >> "${WORKFLOW_LOG:?}"
+SCRIPT
+  chmod +x "$fixture"/*
+  for command in npm no-mistakes treehouse skills update-firstmate pi; do
+    fake_command "$command"
+  done
+  : >"$log"
+  output=$(HOME="$TMP_ROOT/topgrade-home" NPM_CONFIG_PREFIX="$TMP_ROOT/topgrade-npm" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" PI_SIGNED_BIN="$fixture/pi-signed" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
+    "$fixture/update-agent-tools") || fail 'updates-only transaction rejected unrelated security helpers'
+  if grep -Eq '^(verify-av|dot-doctor)$' "$log"; then
+    fail 'updates-only transaction invoked an AV or doctor helper'
+  fi
+  assert_contains "$output" 'complete update transaction finished' \
+    'updates-only transaction did not complete without security helpers'
+  pass 'full Topgrade custom stage remains updates-only; AV and dot-doctor stay in bootstrap/rebuild'
+}
+test_skills_and_topgrade_boundaries() {
+  if trusted_agent_tool_present; then
+    pass 'Trusted agent tools present; update command fixture skipped'
+    return 0
+  fi
+  local log="$TMP_ROOT/updates.log" output
+  : >"$log"
+  mkdir -p "$TMP_ROOT/home/.local/bin"
+  cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/home/.local/bin/update-skills"
+  for command in npm no-mistakes treehouse skills update-firstmate pi; do
+    fake_command "$command"
+  done
+  HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-skills" --seed >/dev/null || fail 'Skills source seeding failed'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/vision --global --skill vision --yes' 'Vision Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/mitsuhiko/agent-stuff --global --skill anachb apple-mail' 'agent-stuff Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/lavish-axi --global --skill lavish --yes' 'lavish-axi Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/kunchenguid/gnhf --global --skill gnhf --yes' 'gnhf Skills source was not seeded explicitly'
+  assert_file_contains "$log" 'skills add https://github.com/jacobaraujo7/remote_pi --global --skill deploy-cockpit deploy-server' 'remote-pi Skills source was not seeded explicitly'
+  if grep -F -- '--all' "$log" >/dev/null 2>&1; then fail 'Skills seeding used --all and installed unselected skills'; fi
+  : >"$log"
+  output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$log" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-agent-tools") || fail 'full agent update transaction failed'
+  [ "$(grep -c '^skills update --global --yes$' "$log")" -eq 1 ] \
+    || fail 'global Skills registry update did not run exactly once for agent-stuff'
+  assert_file_contains "$log" 'update-firstmate' 'Firstmate was not fetched in full update'
+  [ "$(grep -c '^pi update$' "$log")" -eq 1 ] || fail 'Pi native update did not run exactly once'
+  assert_contains "$output" 'backups:' 'successful update did not run migration-backup pruning'
+  assert_contains "$output" 'complete update transaction finished' 'full update did not report completion'
+  : >"$log"
+  if HOME="$TMP_ROOT/home" WORKFLOW_LOG="$log" PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-agent-tools" --only brew >/dev/null 2>&1; then
+    fail 'targeted update argument was accepted as a full transaction'
+  fi
+  [ ! -s "$log" ] || fail 'targeted update unexpectedly ran full-update commands'
+  pass 'Skills registry update and full-versus-targeted update boundaries'
+  test_backup_prune_transaction
+}
+
+test_backup_prune_transaction() {
+  local backup_dir="$TMP_ROOT/transaction-backups" output
+  mkdir -p "$backup_dir/old"
+  touch -t 202001010000 "$backup_dir/old"
+  cat >"$FAKE/update-firstmate" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' 'update-firstmate failed' >> "${WORKFLOW_LOG:?}"
+exit 1
+SCRIPT
+  chmod +x "$FAKE/update-firstmate"
+  set +e
+  output=$(HOME="$TMP_ROOT/home" NPM_CONFIG_PREFIX="$TMP_ROOT/npm" WORKFLOW_LOG="$TMP_ROOT/failure.log" \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" PI_SIGNED_BIN=/nonexistent DOTFILES_BACKUP_BASE="$backup_dir" \
+    PATH="$FAKE:/usr/bin:/bin" "$ROOT/home/bin/update-agent-tools" 2>&1)
+  local status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'failed full transaction unexpectedly succeeded'
+  [ -d "$backup_dir/old" ] || fail 'failed transaction pruned migration backups'
+  assert_contains "$output" 'retaining migration backups' 'failed transaction did not report retention'
+  fake_command update-firstmate
+  pass 'migration backups prune only after a fully successful transaction'
+}
+
+test_npm_prefix_fallback() {
+  if trusted_agent_tool_present; then
+    pass 'Trusted agent tools present; npm prefix fixture skipped'
+    return 0
+  fi
+  local log="$TMP_ROOT/npm-prefix.log" output
+  mkdir -p "$TMP_ROOT/npm-home/.local/bin"
+  cat >"$FAKE/npm" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "${NPM_CONFIG_PREFIX:?}" > "${NPM_PREFIX_LOG:?}"
+SCRIPT
+  chmod +x "$FAKE/npm"
+  for command in no-mistakes treehouse skills update-firstmate pi; do
+    fake_command "$command"
+  done
+  cp "$ROOT/home/bin/update-skills" "$TMP_ROOT/npm-home/.local/bin/update-skills"
+  output=$(HOME="$TMP_ROOT/npm-home" NPM_CONFIG_PREFIX=/nix/store/stale-prefix \
+    DOTFILES_KUN_UPSTREAM="file://$ROOT" NPM_PREFIX_LOG="$log" WORKFLOW_LOG="$TMP_ROOT/npm-workflow.log" \
+    PI_SIGNED_BIN=/nonexistent PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/update-agent-tools") \
+    || fail 'Nix npm prefix prevented the full update transaction'
+  [ "$(cat "$log")" = "$TMP_ROOT/npm-home/.local/npm" ] \
+    || fail 'full update retained a read-only Nix npm prefix'
+  assert_contains "$output" 'complete update transaction finished' \
+    'Nix npm prefix fallback did not complete the transaction'
+  pass 'agent updates replace a read-only Nix npm prefix with a writable user prefix'
+}
+
+test_firstmate_relations() {
+  local src="$TMP_ROOT/firstmate-source" remote="$TMP_ROOT/firstmate-remote.git" fm="$TMP_ROOT/firstmate" branch
+  mkdir -p "$src"
+  git -C "$src" init -q
+  git -C "$src" config user.name test
+  git -C "$src" config user.email test@example.invalid
+  printf one >"$src/file"
+  git -C "$src" add file
+  git -C "$src" commit -qm initial
+  branch=$(git -C "$src" branch --show-current)
+  git clone -q --bare "$src" "$remote"
+  git clone -q "$remote" "$fm"
+  git -C "$fm" config url."$remote".insteadOf https://github.com/kunchenguid/firstmate.git
+
+  printf two >"$src/file"
+  git -C "$src" commit -qam remote-update
+  git -C "$src" push -q "$remote" "$branch"
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
+    >"$TMP_ROOT/firstmate-behind.out" || fail 'behind Firstmate update failed'
+  [ "$(cat "$fm/file")" = two ] || fail 'behind checkout did not fast-forward'
+  [ "$(cat "$fm/config/backend")" = herdr ] || fail 'Firstmate backend was not materialized'
+  [ "$(cat "$fm/config/backlog-backend")" = tasks-axi ] || fail 'Firstmate backlog backend was not materialized'
+  [ -f "$fm/config/crew-harness" ] || fail 'Firstmate crew harness was not materialized'
+  cmp -s "$ROOT/home/.config/firstmate/crew-dispatch.json" "$fm/config/crew-dispatch.json" \
+    || fail 'Firstmate crew dispatch was not materialized exactly'
+  mv "$fm/config/backend" "$fm/config/backend.value"
+  mkdir "$fm/config/backend"
+  before_dispatch=$(shasum -a 256 "$fm/config/crew-dispatch.json" | awk '{print $1}')
+  set +e
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" --materialize-config >/dev/null 2>&1
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'Firstmate config directory collision was not rejected'
+  rmdir "$fm/config/backend"
+  mv "$fm/config/backend.value" "$fm/config/backend"
+  [ "$(shasum -a 256 "$fm/config/crew-dispatch.json" | awk '{print $1}')" = "$before_dispatch" ] \
+    || fail 'failed Firstmate config materialization changed an earlier leaf'
+
+  printf local >"$fm/local"
+  git -C "$fm" add local
+  git -C "$fm" commit -qm local-ahead
+  before=$(git -C "$fm" rev-parse HEAD)
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
+    >"$TMP_ROOT/firstmate-ahead.out" || fail 'ahead Firstmate check failed'
+  [ "$(git -C "$fm" rev-parse HEAD)" = "$before" ] || fail 'ahead checkout was rewritten'
+  assert_file_contains "$TMP_ROOT/firstmate-ahead.out" 'preserving' 'ahead state was not reported'
+
+  git -C "$fm" reset -q --hard HEAD~1
+  printf dirty >>"$fm/file"
+  before=$(git -C "$fm" rev-parse HEAD)
+  FIRSTMATE_HOME="$fm" "$ROOT/home/bin/update-firstmate" \
+    >"$TMP_ROOT/firstmate-dirty.out" || fail 'dirty Firstmate check failed'
+  [ "$(git -C "$fm" rev-parse HEAD)" = "$before" ] || fail 'dirty checkout was rewritten'
+
+  # A separate clone proves divergence without inheriting the dirty fixture.
+  local diverged="$TMP_ROOT/firstmate-diverged"
+  git clone -q "$remote" "$diverged"
+  git -C "$diverged" config url."$remote".insteadOf https://github.com/kunchenguid/firstmate.git
+  git -C "$diverged" config user.name test
+  git -C "$diverged" config user.email test@example.invalid
+  printf local >"$diverged/diverged"
+  git -C "$diverged" add diverged
+  git -C "$diverged" commit -qm local-diverged
+  printf remote >"$src/remote-only"
+  git -C "$src" add remote-only
+  git -C "$src" commit -qm remote-diverged
+  git -C "$src" push -q "$remote" "$branch"
+  before=$(git -C "$diverged" rev-parse HEAD)
+  FIRSTMATE_HOME="$diverged" "$ROOT/home/bin/update-firstmate" \
+    >"$TMP_ROOT/firstmate-diverged.out" || fail 'diverged Firstmate check failed'
+  [ "$(git -C "$diverged" rev-parse HEAD)" = "$before" ] || fail 'diverged checkout was rewritten'
+  assert_file_contains "$TMP_ROOT/firstmate-diverged.out" 'diverges' 'diverged state was not reported'
+  pass 'Firstmate behind, dirty, ahead, and diverged relations are safe'
+}
+
+test_lock_rollback_and_doctor_read_only() {
+  local lock_before lock_after status doctor_home="$TMP_ROOT/doctor-home"
+  mkdir -p "$FAKE" "$doctor_home"
+  cat >"$FAKE/nix" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'nix %s\n' "$*" >> "${WORKFLOW_LOG:?}"
+exit 42
+SCRIPT
+  cat >"$FAKE/sudo" <<'SCRIPT'
+#!/usr/bin/env bash
+set -e
+[ "${1:-}" = -H ] || exit 98
+shift
+[ "${1:-}" = env ] || exit 97
+shift
+export HOME=/var/root
+while [ "$#" -gt 0 ] && [ "${1#*=}" != "$1" ]; do
+  export "$1"
+  shift
+done
+exec "$@"
+SCRIPT
+  chmod +x "$FAKE/nix" "$FAKE/sudo"
+  cat >"$FAKE/pi-signed" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 0
+SCRIPT
+  cat >"$FAKE/av" <<'SCRIPT'
+#!/usr/bin/env bash
+case "$1" in
+  doctor) printf '{"results":[]}\n' ;;
+  scan) printf '{"findings":[]}\n' ;;
+esac
+SCRIPT
+  chmod +x "$FAKE/pi-signed" "$FAKE/av"
+  cat >"$FAKE/container" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 0
+SCRIPT
+  chmod +x "$FAKE/container"
+  rm -f "$FAKE/darwin-rebuild"
+  mkdir -p "$doctor_home/firstmate/config"
+  git -C "$doctor_home/firstmate" init -q
+  cp "$ROOT/home/.config/firstmate/crew-dispatch.json" "$doctor_home/firstmate/config/crew-dispatch.json"
+  printf 'herdr\n' > "$doctor_home/firstmate/config/backend"
+  printf 'pi-signed\n' > "$doctor_home/firstmate/config/crew-harness"
+  printf 'tasks-axi\n' > "$doctor_home/firstmate/config/backlog-backend"
+  lock_before=$(shasum -a 256 "$ROOT/flake.lock" | awk '{print $1}')
+  set +e
+  HOME="$doctor_home" WORKFLOW_LOG="$TMP_ROOT/lock.log" DOTFILES_ROOT="$ROOT" \
+    DOTFILES_ASSUME_HOMEBREW_ZAP=1 PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/apply-darwin" >/dev/null 2>&1
+  status=$?
+  set -e
+  lock_after=$(shasum -a 256 "$ROOT/flake.lock" | awk '{print $1}')
+  [ "$status" -eq 42 ] || fail 'Nix failure did not propagate'
+  [ "$lock_before" = "$lock_after" ] || fail 'flake.lock was not rolled back'
+  local real_jq
+  real_jq=$(command -v jq)
+  rm -f "$FAKE/nix"
+  cat >"$FAKE/jq" <<SCRIPT
+#!/usr/bin/env bash
+exec "$real_jq" "\$@"
+SCRIPT
+  chmod +x "$FAKE/jq"
+  set +e
+  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PI_SIGNED_BIN="$FAKE/pi-signed" \
+    PATH="$FAKE:/usr/bin:/bin" \
+    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/doctor.out" 2>&1
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'doctor trusted an arbitrary PATH Container executable'
+  assert_file_contains "$TMP_ROOT/doctor.out" 'unavailable or its Apple provenance is unproven' \
+    'doctor did not report unproven Container provenance'
+  pass 'Nix lock rollback and read-only doctor behavior'
+}
+
+test_pi_package_resource_ownership
+test_public_commands
+test_pi_preference_and_degradation
+test_av_authority_blocks_high_findings
+test_topgrade_updates_only_boundary
+test_skills_and_topgrade_boundaries
+test_npm_prefix_fallback
+test_firstmate_relations
+test_lock_rollback_and_doctor_read_only

@@ -24,48 +24,65 @@ If you find a bug, please open a GitHub Issue using the bug report template.
 Running the switch builds:
 
 - System settings (dark mode, key repeat, dock, Finder, trackpad)
-- Homebrew apps (casks and CLI tools)
+- Homebrew apps (Automic Vault, signed Pi Launcher, casks, and CLI tools)
 - Nix user packages (CLI utilities, runtimes, language servers, Pi, and Nerd Fonts)
 - Shell (zsh, aliases, starship prompt)
 - Editor (Neovim config with the rose-pine moon theme)
 - Terminal (WezTerm config with the rose-pine moon theme and dimmed unfocused windows)
 - Agent configs (Claude, Codex, OpenCode, and Pi all share one AGENTS.md)
-- Global agent tools and skills (Firstmate, no-mistakes, treehouse, AXI tools, Backpass, Matt Pocock, Impeccable, and Remote Pi)
+- Global agent tools and skills (Firstmate, Vision, no-mistakes, AXI/lavish-axi,
+  gnhf, Backpass, Matt Pocock, Impeccable, and Remote Pi/agent-network)
 - Declarative yolo launch posture with independent validation and escalation boundaries
+- Apple Container CLI installed from Apple's signed release package (not Nix/Homebrew)
 
 ## Prerequisites
 
 - Apple Silicon Mac, by default.
-- Intel Mac: change one line.
-  In `configuration.nix`, set `nixpkgs.hostPlatform = "x86_64-darwin";` (the comment right there tells you the same thing).
+The bootstrap installer and declared host target are intentionally Apple
+Silicon-only; do not run this branch on Intel without separately reviewing and
+pinning an x86_64 installer.
 
 ## Fresh-machine setup
 
-On a brand new Mac, from a bare clone of this repo:
+On a brand-new Apple-Silicon Mac, install Apple's Command Line Tools, clone
+the public checkout over HTTPS from `main`, and start bootstrap:
 
 ```sh
-git clone https://github.com/kunchenguid/dotfiles.git
-cd dotfiles
-```
-
-Before you run it: review "Make it yours" below.
-Change the host label or CPU architecture if needed, and read the Homebrew cleanup warning.
-`bootstrap.sh` applies the config to your machine, so do this first.
-
-```sh
+/usr/bin/xcode-select --install
+/usr/bin/git clone --branch main https://github.com/rvzaku/dotfiles ~/dotfiles
+cd ~/dotfiles
 ./bootstrap.sh
 ```
 
-`bootstrap.sh` does six things, in order:
+Bootstrap derives the local username and hostname; no GitHub login is required
+before it reaches the real OAuth gate. Existing `~/dotfiles` is never replaced
+when resuming a valid checkout. Read the zap, credential, and privacy prompts
+as they appear; rerun the same command after an interruption.
 
-1. Installs Determinate Nix, if it isn't already installed.
-2. Symlinks this repo to `~/.dotfiles`.
-   This has to happen before the first build, because `home.nix` points at config files through `~/.dotfiles`.
-3. Clones Firstmate to `~/firstmate` if it is missing, preserving any existing checkout.
-4. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
-5. Runs the first `darwin-rebuild switch`.
-   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
-6. Verifies the pinned global agent npm tools are on `PATH` and installs `no-mistakes` and `treehouse` from their official installers if either is missing.
+Sudo is configured declaratively for Touch ID through
+`security.pam.services.sudo_local.touchIdAuth` and `reattach`, including
+Herdr/terminal multiplexer sessions. Password fallback remains available when
+Touch ID cannot be used.
+
+`bootstrap.sh` performs the complete ordered setup: Apple Command Line Tools;
+Determinate Nix and locked-flake validation; the first darwin-rebuild (including
+Automic Vault, SSH tooling, and declared apps); AV verification; GitHub browser/
+device OAuth; Ed25519 SSH generation, strict host verification, and public-key
+upload; AV-supported credential hardening and a HIGH/CRITICAL security gate;
+direct Kun Firstmate checkout verification and selected config materialization;
+the Pi-signed/Pi fallback and Herdr/Treehouse/AXI/No Mistakes/Backpass toolchain;
+global Skills registry seeding; Apple's signed Container installer and service;
+and a read-only doctor. OAuth, passphrases, Secret Gates, administrator
+approval, and macOS privacy dialogs remain genuine interactive boundaries.
+Reruns preserve existing Firstmate work, SSH identity, credentials, and runtime
+state; no hidden `.dotfiles` alias is created. Homebrew cleanup remains `zap`
+on every Mac; non-owned machines record a protective marker, show the exact
+inventory, and stop before activation unless the owner confirms. Determinate
+Nix, no-mistakes, and Treehouse downloads are pinned and checksum-verified; Apple's Container
+package is checked with `pkgutil --check-signature` for an Apple Developer ID Installer
+chain anchored at Apple Root CA before installation, and the installed binary/provenance
+are revalidated. Secrets and tokens remain
+under Automic Vault/native Keychain boundaries, never Git or Nix.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 
@@ -78,7 +95,16 @@ nix flake check --no-build
 nix build .#darwinConfigurations.mac.system --dry-run
 ```
 
-If you renamed the host label in "Make it yours", substitute your label for `mac` in these commands.
+Pure flake checks use the deterministic `mac` fallback; real rebuilds derive
+the host label from macOS `LocalHostName` (or `DOTFILES_HOST`).
+
+The collision-adoption fixture checks first activation, rerun idempotence,
+byte-preserving backups, Pi hook composition, and Nix syntax:
+
+```sh
+tests/managed-paths.test.sh
+tests/agent-workflows.test.sh
+```
 
 ## Daily use
 
@@ -91,15 +117,22 @@ Edit the config files in place, then apply:
 That's it.
 No separate build-and-copy step.
 
+`./rebuild.sh` is safe to rerun after an interrupted bootstrap. It adopts only
+declared leaves, preserves unknown paths, and keeps recoverable backups; the
+acknowledged Homebrew zap policy still applies. The same pinned npm tools and
+wrappers are available in a fresh login through `~/.local/bin` and
+`~/firstmate/bin`; `update-agent-tools` also adds those directories when
+Topgrade runs from an older shell.
+
 ## Make it yours
 
 This repo is mine.
 If you clone it, review these before you run `bootstrap.sh`:
 
-- **Username**: run `./bootstrap.sh` (it detects your macOS username and offers to set it) OR change the single `user = "kunchen"` line in `flake.nix`.
-  Everything else (`configuration.nix`, `home.nix`, home directory paths) is threaded from that one variable.
-- **Host label** `"mac"`, in three places: `flake.nix` (the `darwinConfigurations."mac"` name), `rebuild.sh:5` (the `#mac` at the end of the flake reference), and `bootstrap.sh`'s first-switch command (also `#mac`).
-  All three have to match.
+- **Username and host**: `bootstrap.sh` and `apply-darwin` derive `id -un` and
+  macOS `LocalHostName` at runtime and pass them to the impure flake evaluation.
+  No machine-specific identity is committed; override `DOTFILES_USER` or
+  `DOTFILES_HOST` only for a deliberate test/alternate host.
 - **CPU architecture**, `hostPlatform` in `configuration.nix` (see Prerequisites above).
 
 **Git identity:** this config deliberately does not set your git name or email.
@@ -117,19 +150,23 @@ programs.git = {
 ```
 
 **Homebrew cleanup warning:** `configuration.nix` sets `homebrew.onActivation.cleanup = "zap"`.
-That means every time you switch, Homebrew removes any package or cask on your machine that isn't listed in the `brews` and `casks` arrays in `configuration.nix`.
-If you already have Homebrew stuff installed that isn't in that list, the first switch will uninstall it.
+On an acknowledged switch, Homebrew removes any package or cask on your machine that isn't listed in the `brews` and `casks` arrays in `configuration.nix`.
+If you already have Homebrew stuff installed that isn't in that list, an own-machine switch will uninstall it; protective machines print the exact inventory and stop before activation until the owner confirms.
 Read through `brews` and `casks` before you run `bootstrap.sh` or `rebuild.sh` for the first time, and add anything you want to keep.
 
 **About `herdr`:** it's in the `brews` list.
 It's a real public Homebrew formula (`brew info herdr` finds it in homebrew-core, no tap needed), so it will install fine.
 If you don't use it, just remove it from `brews` in your copy.
 
+**Automic Vault:** the official `automic-vault/isotopes/automic-vault` cask is declared so `av` remains the security authority.
+`dot-doctor` runs `av scan --json` read-only and fails if AV reports unresolved HIGH or CRITICAL findings.
+Secrets, approvals, authorization history, and vault state stay in Automic Vault's own runtime locations, not in Git or Nix.
+
 **Heads-up:**
 
 - `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, OpenCode, and Pi.
   If you clone this repo, you'd silently inherit my agent instructions - edit or delete `home/AGENTS.md` if you don't want that.
-- The `cc`, `co`, `oc`, `gp`, `cu`, and `py` shell aliases in `home.nix` run the `agent-*-yolo` wrappers in `home/bin/` - high-agency shortcuts that skip each tool's own approval prompts (see "Global agent foundation" below).
+- The `cc`, `co`, `oc`, `gp`, and `py` shell aliases in `home.nix` run the `agent-*-yolo` wrappers in `home/bin/` - high-agency shortcuts that skip each tool's own approval prompts (see "Global agent foundation" below).
   They're convenient for me, but know what they do before you use them.
 
 ## Repo tour
@@ -137,31 +174,47 @@ If you don't use it, just remove it from `brews` in your copy.
 - `flake.nix` - the entry point.
   Wires up nixpkgs, nix-darwin, home-manager, and nix-homebrew, and declares the `mac` machine.
 - `configuration.nix` - system-level config: macOS defaults, Homebrew.
-- `home.nix` - user-level config: shell, packages, prompt, and the symlinks described below.
+- `home.nix` - user-level config: shell, packages, prompt, and managed leaves
+  described below.
 - `rebuild.sh` - re-applies the config after the first switch.
   Run this every time you make a change.
-- `home/` - the actual config files that get symlinked into place; the sections below explain the shared symlink model and Pi's narrower selective setup.
+- `home/` - authored config and agent resources; selected leaves are linked or
+  materialized into place, as described below, with Pi using narrower additive
+  setup.
 
 ## How the symlinks work
 
-The files under `home/` are the real files - editing them here is editing your live config, no rebuild needed to see the change in your editor.
-`home.nix` uses `mkOutOfStoreSymlink` to point paths like `~/.config/nvim` straight at `home/.config/nvim` in this repo, so the two never drift out of sync.
+Repository-authored linked leaves under `home/` are the real files, so editing
+them here updates the live config without a rebuild. Generated or runtime-owned
+leaves (such as Backpass, Firstmate, and composed Pi settings) are exceptions;
+their helpers materialize state during activation or update.
+`home.nix` uses additive leaf `mkOutOfStoreSymlink` links, so paths like
+`~/.config/nvim` read from this repo without replacing a pre-existing config
+directory. Existing files at declared leaves are moved byte-for-byte to a
+unique backup directory before replacement; older backups are never
+overwritten. Files and resources not declared by this repo remain untouched.
 You only run `./rebuild.sh` when you change something that isn't just a symlinked file, like a package list or a system default.
 
 ## Global agent foundation
 
 Home Manager installs Pi, the pinned AXI/Backpass/Remote Pi npm tools, and the
-global skill tree. Firstmate remains an agent distribution rather than a CLI;
-`bootstrap.sh` makes the upstream checkout available at `~/firstmate` and adds
-its `bin/` directory to PATH. The global `home/.config/firstmate/crew-dispatch.json`
-is linked into Firstmate's local `config/` directory and uses quota-aware profile
-arrays for image generation, difficult design/architecture/planning, defined bug
-fixes, and the default Pi profile.
+user-owned global npm prefix at `~/.local/npm` (never `/nix/store`). Firstmate
+remains an agent distribution rather than a CLI; `bootstrap.sh` makes the
+upstream checkout available at `~/firstmate` and adds its `bin/` directory to
+PATH. Bootstrap and update-firstmate materialize the selected Firstmate config
+leaves as private regular files. `rebuild.sh` applies locked Darwin state first, then
+it materializes only the selected captain-private leaves and never mutates the
+external Firstmate tracked source; these helpers never symlink the whole config.
 
-Claude, Codex, OpenCode, Grok, Cursor, and Pi have yolo wrappers for autonomous
-execution. This does not bypass independent tests, no-mistakes, or escalation
-boundaries. Topgrade is the only routine latest-version update path for these
-tools; normal Home Manager activation installs the pinned bootstrap versions.
+Claude, Codex, OpenCode, Grok, and Pi retain adapters for their officially
+supported interfaces. This does not install OpenCode or Grok clients merely
+because an adapter exists, and wrappers do not bypass independent tests,
+no-mistakes, or escalation boundaries. Topgrade is the routine latest-version
+update path; normal Home Manager activation installs declared software.
+Determinate Nix owns daemon and self-updates, so Topgrade disables its `nix
+upgrade-nix` stage and does not compete with the flake-lock transaction.
+Only documented wrappers, doctor, `ensure-agent-tools`, and update commands are
+linked into `~/.local/bin`; internal adoption and backup helpers stay private.
 
 Backpass user-scope state is private under `~/.config/backpass/user/`; its
 configured writable source is this checkout's `home/AGENTS.md` and
@@ -170,34 +223,57 @@ configured writable source is this checkout's `home/AGENTS.md` and
 
 ## Pi configuration
 
-Pi is declared in `home.packages` and its pinned package resources are managed
+Pi is declared in `home.packages` and its package resources are managed
 by `home/.pi/agent/settings.json`.
 
-[Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is also optional and installed from its owner, not declared by this config:
+[Pi Launcher](https://github.com/kunchenguid/homebrew-tap) is declared from its owner tap so the signed launcher can be preferred:
 
 ```sh
 brew install --cask kunchenguid/tap/pi-launcher
 ```
 
-Home Manager owns exactly two repository-authored Pi directories: `~/.pi/agent/themes` and `~/.pi/agent/extensions`. It also links `models.json` and `settings.json` as individual files. The local extension directory is for public, repository-authored extensions only - third-party package code never belongs there. Run `/reload` after editing a local extension or other Pi resources. The terminal-title extension shows a spinner while Pi is working, then a completion mark with the session name or current directory. The `rose-pine-moon` theme was authored clean-room from the public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's [public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
+Home Manager owns repository-authored Pi leaves below `~/.pi/agent/themes` and
+`~/.pi/agent/extensions`, not those directories themselves. Existing themes
+and extensions not in this repo stay active. It also links `models.json` and a
+composed `settings.json` as individual files. Existing Pi settings are backed
+up and merged with the repository settings, with repository keys taking
+precedence while unknown nested settings such as hooks remain active. The
+local extension directory is for public, repository-authored extensions only -
+third-party package code never belongs there. Run `/reload` after editing a
+local extension or other Pi resources. The terminal-title extension shows a
+spinner while Pi is working, then a completion mark with the session name or
+current directory. The `rose-pine-moon` theme was authored clean-room from the
+public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's
+[public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
 
 ### Pi Calm
 
-`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Home Manager's existing global extensions-directory link makes Pi auto-load it without another declaration. `/calm` toggles a conversation-only presentation mode and is off by default. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency.
+`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Home Manager links its files additively into `~/.pi/agent/extensions`, so Pi auto-loads it without another declaration. `/calm` toggles a conversation-only presentation mode and is off by default. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency.
 
 When enabled, Calm hides collapsed thinking and the call/result shells for Pi's seven built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`) without leaving blank transcript rows. During an active run it replaces Pi's working row with a two-line animated blue-water, yellow-boat widget. `/calm` restores Pi's stock rendering and preserves the existing Ctrl+O tool-expansion choice.
 
 Calm never changes prompts, tool execution, model context, session data, or ordering. `/share` and `/export` use the complete stock transcript. Generic custom tools, images, and unsupported Pi transcript classes deliberately remain visible because Pi has no safe general-purpose transcript filter. If a future Pi release no longer exports the exact collapsed-thinking rendering seam, Calm logs one diagnostic and leaves only that adapter disabled; all other behavior remains available.
 
-Pi's package system declares three third-party sources in the linked global `settings.json`:
+Pi's package system declares four third-party sources in the linked global `settings.json`:
 
-- `npm:pi-web-access@0.14.0` - the exact public npm release for web access.
-- `npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6` - the exact public npm release from `ryan_nookpi`.
-- `npm:remote-pi@0.7.0` - the pinned Remote Pi extension and agent-network package.
+- `npm:pi-web-access` - the web-access package, intentionally unpinned for native updates.
+- `npm:@ryan_nookpi/pi-extension-codex-fast-mode` - the Codex fast-mode package, intentionally unpinned.
+- `npm:remote-pi` - the Remote Pi extension and agent-network package, intentionally unpinned.
+- `npm:mitsupi` - the `mitsuhiko/agent-stuff` Pi package, intentionally unpinned (extensions,
+  commands, themes, and skills).
 
-The versions are immutable pins, so Pi does not move them during package updates. Deliberate updates require a new source and security audit, followed by an explicit pin change in `home/.pi/agent/settings.json`. On Pi 0.82.0, global settings declarations install missing pinned packages automatically at startup. No one-time install command is required. Pi keeps the downloaded npm package trees in its own unmanaged `~/.pi/agent/npm` runtime directory, outside Home Manager and Git tracking.
+The package names are intentionally unpinned so Pi's native package update can refresh them during the full update transaction. Deliberate source changes still require a security audit and an explicit edit to `home/.pi/agent/settings.json`. On Pi 0.82.0, global settings declarations install missing packages automatically at startup. No one-time install command is required. Pi keeps the downloaded npm package trees in its own unmanaged `~/.pi/agent/npm` runtime directory, outside Home Manager and Git tracking.
 
-Both packages execute with your full user permissions and must be trusted like any other executable code.
+All packages execute with your full user permissions and must be trusted like any other executable code.
+
+Global Skills are seeded and updated through the `skills` registry client, not
+by Home Manager copying upstream trees. `home/bin/update-skills --seed` installs
+only selected skills from the Firstmate, Vision (`kunchenguid/vision`), AXI,
+Matt Pocock, agent-stuff, Impeccable, No Mistakes, and Remote Pi sources (never
+`--all`), then updates every registered skill exactly once. Backpass and the
+Remote Pi compatibility adapters remain authored local resources; the
+unselected `tmux` skill is removed when encountered. Credentials, trust,
+sessions, caches, and registry metadata remain runtime state outside Git.
 
 Home Manager deliberately does not manage `~/.pi/agent` itself, or Pi authentication, sessions, trust decisions, caches, npm/git package trees, or any other runtime state. The model overrides contain no credentials or endpoint settings, do not choose a default model, and only take effect after you authenticate Pi yourself. This remains an additive post-video layer: it does not install Pi, a launcher, or package source code into this repository.
 
@@ -207,6 +283,24 @@ The first time you launch `nvim`, it bootstraps [lazy.nvim](https://github.com/f
 That needs network access once; after that it's offline.
 Neovim and WezTerm both use the rose-pine moon theme.
 Neovim keeps italics off and uses a transparent background on macOS, Windows, and WSL so it matches the terminal setup.
+
+## Ownership and fork delta
+
+| Component | Owner | Mutable state |
+| --- | --- | --- |
+| Nix, nix-darwin, Home Manager, nix-homebrew | `flake.nix`, `configuration.nix`, `home.nix` | `flake.lock` is reviewed and rolled back on failed switches |
+| Homebrew inventory, Automic Vault, and zap warning | `configuration.nix`, `home/bin/apply-darwin`, `home/bin/dot-doctor` | Homebrew's own database and AV's local authority store |
+| Agent npm tools and Skills updates | `home.nix`, `home/bin/update-agent-tools`, `home/bin/update-skills` | npm prefix and global Skills registry under `$HOME` |
+| Firstmate and Herdr | `bootstrap.sh`, `home/bin/update-firstmate`, `home/.config/herdr` | `$FIRSTMATE_HOME` and Herdr runtime state |
+| Agent resources and Skills registry | `home/`, `home/bin/update-skills` | Upstream Skills are registry-owned; Backpass is the only writable local source; auth, sessions, caches, and package trees stay outside Git |
+| Collision adoption and migrations | `home/bin/prepare-managed-paths` | `$XDG_STATE_HOME/dotfiles/backups/home-manager` |
+
+This is a minimal fork of Kun's current architecture. The intentional delta is
+portable checkout-root injection for arbitrary worktrees, additive collision
+adoption with byte-preserving backups, Pi signed-launcher preference and
+fallback, Automic Vault security checks, Apple's signed Container installer, read-only `dot-doctor`, and
+safe full-update helpers. Existing agent resources remain registry/package-owned
+unless the table above names this checkout as their owner.
 
 ## License
 

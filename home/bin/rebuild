@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do
+  script_dir=$(cd "$(dirname "$script_path")" && pwd -P)
+  link=$(readlink "$script_path")
+  case "$link" in
+    /*) script_path=$link ;;
+    *) script_path="$script_dir/$link" ;;
+  esac
+done
+root=$(cd "$(dirname "$script_path")/../.." && pwd -P)
+if ! root=$(git -C "$root" rev-parse --show-toplevel 2>/dev/null); then
+  root=$(git -C "$HOME/dotfiles" rev-parse --show-toplevel)
+fi
+DOTFILES_ROOT="$root" exec "$root/rebuild.sh" "$@"

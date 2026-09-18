@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -u
+
+label=${1:?verification label is required}
+resolve_tool="$(dirname "$0")/resolve-trusted-tool"
+av_bin=$({ [ -x "$resolve_tool" ] && "$resolve_tool" av; } 2>/dev/null || true)
+jq_bin=$({ [ -x "$resolve_tool" ] && "$resolve_tool" jq; } 2>/dev/null || true)
+if [ -z "$av_bin" ] || [ ! -x "$av_bin" ] || [ -z "$jq_bin" ] || [ ! -x "$jq_bin" ]; then
+  printf '%s: Automic Vault and jq are required\n' "$label" >&2
+  exit 1
+fi
+
+doctor=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-doctor.XXXXXX") || exit 1
+if ! "$av_bin" doctor --json >"$doctor" 2>/dev/null \
+  || ! "$jq_bin" -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$doctor" >/dev/null 2>&1; then
+  rm -f "$doctor"
+  printf '%s: Automic Vault doctor output was unavailable or malformed; run av doctor --json for remediation\n' "$label" >&2
+  exit 1
+fi
+issues=$("$jq_bin" '[.results[].issues[]] | length' "$doctor" 2>/dev/null || printf parse-error)
+if [ "$issues" != 0 ]; then
+  printf '%s: Automic Vault doctor reports %s unresolved issue(s)\n' "$label" "$issues" >&2
+  "$jq_bin" -r '.results[]?.issues[]? | "  AV doctor: " + ((.name // .id // "issue")|tostring) + " - " + ((.description // .message // "remediation required")|tostring)' "$doctor" >&2 || true
+  rm -f "$doctor"
+  exit 1
+fi
+rm -f "$doctor"
+
+scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX") || exit 1
+if ! "$av_bin" scan --json >"$scan" 2>/dev/null \
+  || ! "$jq_bin" -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$scan" >/dev/null 2>&1; then
+  rm -f "$scan"
+  printf '%s: Automic Vault scan output was unavailable or malformed; run av scan --json for remediation\n' "$label" >&2
+  exit 1
+fi
+blocking=$("$jq_bin" '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$scan" 2>/dev/null || printf parse-error)
+if [ "$blocking" != 0 ]; then
+  printf '%s: Automic Vault scan reports %s unresolved HIGH/CRITICAL finding(s); rerun bootstrap.sh to apply the required AV hardening\n' "$label" "$blocking" >&2
+  "$jq_bin" -r '
+    .findings[]?
+    | select((.severity|ascii_downcase)=="high" or (.severity|ascii_downcase)=="critical")
+    | ([(.affected[]?.path // empty)] | join(", ")) as $affected
+    | (if $affected == "" then "not reported" else $affected end) as $where
+    | "  AV scan: source=" + ((.source // ((.detectors // []) | join(",")) // "unknown")|tostring)
+      + " affected=" + $where + " [" + .severity + "]\n"
+      + "      Explanation: " + ((.explanation // .description // .message // "not supplied")|tostring) + "\n"
+      + "      Remediation: " + ((.solution // .remediation // "follow the AV detector guidance")|tostring) + "\n"
+      + "      Bootstrap step: apply this remediation, then rerun ./bootstrap.sh"
+  ' "$scan" >&2 || true
+  rm -f "$scan"
+  exit 1
+fi
+rm -f "$scan"
+printf '%s: Automic Vault doctor and scan are clean\n' "$label"

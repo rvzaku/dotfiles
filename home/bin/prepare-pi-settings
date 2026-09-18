@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Resolve Pi package ownership after Home Manager has composed user settings.
+# Package-only resources remain enabled on a fresh machine; only resources
+# with same-named user-owned copies are filtered from mitsupi.
+set -euo pipefail
+
+settings=${1:?settings JSON path is required}
+jq_bin=${2:?jq path is required}
+
+resource_home="${DOTFILES_HOME:-$HOME}"
+
+[ -f "$settings" ] || exit 0
+
+mitsupi_extensions=(
+  answer.ts btw.ts context.ts control.ts files.ts go-to-bed.ts loop.ts
+  multi-edit.ts notify.ts prompt-editor.ts review.ts session-breakdown.ts
+  split-fork.ts todos.ts uv.ts whimsical.ts
+)
+mitsupi_skills=(
+  anachb apple-mail commit frontend-design ghidra github google-workspace
+  librarian mermaid native-web-search oebb-scotty openscad pi-share sentry
+  summarize tmux update-changelog uv web-browser
+)
+mitsupi_root="$resource_home/.pi/agent/npm/node_modules/mitsupi"
+for resource_path in "$mitsupi_root/extensions"/*.ts; do
+  [ -f "$resource_path" ] || continue
+  resource=$(basename "$resource_path")
+  case " ${mitsupi_extensions[*]} " in
+    *" $resource "*) ;;
+    *) mitsupi_extensions+=("$resource") ;;
+  esac
+done
+for resource_path in "$mitsupi_root/skills"/*/SKILL.md; do
+  [ -f "$resource_path" ] || continue
+  resource=$(basename "$(dirname "$resource_path")")
+  case " ${mitsupi_skills[*]} " in
+    *" $resource "*) ;;
+    *) mitsupi_skills+=("$resource") ;;
+  esac
+done
+
+excluded_extensions=()
+for resource in "${mitsupi_extensions[@]}"; do
+  if [ -e "$resource_home/.pi/agent/extensions/$resource" ] || [ -L "$resource_home/.pi/agent/extensions/$resource" ]; then
+    excluded_extensions+=("!extensions/$resource")
+  fi
+done
+# mitsupi's multi-edit and the authored unified-edit are alternate owners.
+if [ -e "$resource_home/.pi/agent/extensions/unified-edit.ts" ] || [ -L "$resource_home/.pi/agent/extensions/unified-edit.ts" ]; then
+  case " ${excluded_extensions[*]} " in
+    *' !extensions/multi-edit.ts '*) ;;
+    *) excluded_extensions+=("!extensions/multi-edit.ts") ;;
+  esac
+fi
+
+excluded_skills=()
+for resource in "${mitsupi_skills[@]}"; do
+  if [ -e "$resource_home/.pi/agent/skills/$resource" ] || [ -L "$resource_home/.pi/agent/skills/$resource" ]; then
+    excluded_skills+=("!skills/$resource/SKILL.md")
+  fi
+done
+
+json_array() {
+  if [ "$#" -eq 0 ]; then
+    printf '%s\n' '[]'
+  else
+    printf '%s\n' "$@" | "$jq_bin" -Rsc 'split("\n")[:-1]'
+  fi
+}
+if ((${#excluded_extensions[@]})); then
+  extensions_json=$(json_array "${excluded_extensions[@]}")
+else
+  extensions_json='[]'
+fi
+if ((${#excluded_skills[@]})); then
+  skills_json=$(json_array "${excluded_skills[@]}")
+else
+  skills_json='[]'
+fi
+
+tmp=$(mktemp "${settings}.pi-filter.XXXXXX")
+cleanup() { rm -f "$tmp"; }
+trap cleanup EXIT
+"$jq_bin" --argjson excludedExtensions "$extensions_json" \
+  --argjson excludedSkills "$skills_json" '
+  def packageSource:
+    if type == "string" then .
+    elif type == "object" then (.source // null)
+    else null
+    end;
+  def mergeDeep(left; right):
+    if (left | type) == "object" and (right | type) == "object" then
+      reduce (right | keys_unsorted[]) as $key
+        (left;
+         .[$key] = if has($key) then mergeDeep(.[$key]; right[$key]) else right[$key] end)
+    else right
+    end;
+  def dedupePackages:
+    reduce (.packages // [])[] as $package
+      ({out: [], slots: {}};
+       ($package | packageSource) as $source |
+       if $source == null then
+         .out += [$package]
+       elif (.slots | has($source)) then
+         if ($package | type) == "object" then
+           (.slots[$source]) as $slot |
+           if (.out[$slot] | type) == "object" then
+             .out[$slot] = mergeDeep(.out[$slot]; $package)
+           else
+             .out[$slot] = $package
+           end
+         else . end
+       else
+         .slots[$source] = (.out | length) | .out += [$package]
+       end)
+    | .out;
+  .packages = dedupePackages
+  | .packages |= map(
+      . as $package |
+      if (($package | packageSource) == "npm:mitsupi") then
+        (if ($package | type) == "string" then {source: $package} else $package end)
+        | if ($excludedExtensions | length) > 0 then .extensions = $excludedExtensions else del(.extensions) end
+        | if ($excludedSkills | length) > 0 then .skills = $excludedSkills else del(.skills) end
+      else . end)
+' "$settings" >"$tmp"
+mv -f "$tmp" "$settings"
+trap - EXIT

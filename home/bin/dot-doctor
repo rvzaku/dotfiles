@@ -1,0 +1,377 @@
+#!/usr/bin/env bash
+# Read-only health report for the dotfiles workspace.
+set -u
+
+resolve_script_root() {
+  local script_path="${BASH_SOURCE[0]}" link script_dir root
+  case "$script_path" in
+    /*) ;;
+    *) script_path="$PWD/$script_path" ;;
+  esac
+  while [ -L "$script_path" ]; do
+    script_dir=$(cd "$(dirname "$script_path")" 2>/dev/null && pwd -P) || return 1
+    link=$(readlink "$script_path")
+    case "$link" in
+      /*) script_path=$link ;;
+      *) script_path="$script_dir/$link" ;;
+    esac
+  done
+  root=$(cd "$(dirname "$script_path")/../.." 2>/dev/null && pwd -P) || return 1
+  git -C "$root" rev-parse --show-toplevel 2>/dev/null
+}
+
+resolve_root() {
+  local root
+  if [ -n "${DOTFILES_ROOT:-}" ] && root=$(git -C "$DOTFILES_ROOT" rev-parse --show-toplevel 2>/dev/null); then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  if root=$(resolve_script_root); then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  git rev-parse --show-toplevel 2>/dev/null
+}
+
+ROOT=$(resolve_root 2>/dev/null || true)
+if [ -z "$ROOT" ]; then
+  printf '%s\n' 'dot-doctor: FAIL - this command is not inside a dotfiles checkout' >&2
+  exit 1
+fi
+
+problems=0
+degraded=0
+pass_check() { printf 'dot-doctor: PASS - %s\n' "$1"; }
+fail_check() { printf 'dot-doctor: FAIL - %s\n' "$1" >&2; problems=$((problems + 1)); }
+redact_origin() { /usr/bin/sed -E -e 's#^([[:alpha:]][[:alnum:]+.-]*://)[^/@]*@#\1<redacted>@#' -e 's#^[^/@:]+(:[^/@]*)?@#<redacted>@#'; }
+degraded_check() { printf 'dot-doctor: DEGRADED - %s\n' "$1" >&2; degraded=$((degraded + 1)); }
+
+find_pi_signed() {
+  local candidate
+  if [ "${PI_SIGNED_BIN+x}" = x ]; then
+    if [ -x "$PI_SIGNED_BIN" ] && "$PI_SIGNED_BIN" --version >/dev/null 2>&1; then
+      printf '%s\n' "$PI_SIGNED_BIN"
+      return 0
+    fi
+    :
+  fi
+  candidate=$(command -v pi-signed 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/pi-signed /usr/local/bin/pi-signed; do
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+find_pi_plain() {
+  local candidate
+  candidate=$(command -v pi 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ -f "$ROOT/flake.lock" ]; then
+  pass_check 'flake.lock is present'
+else
+  fail_check 'flake.lock is missing'
+fi
+if [ -f "$ROOT/configuration.nix" ] && [ -f "$ROOT/home.nix" ]; then
+  pass_check 'nix-darwin and Home Manager configuration are present'
+else
+  fail_check 'nix configuration is incomplete'
+fi
+if grep -q 'onActivation.cleanup = "zap"' "$ROOT/configuration.nix"; then
+  pass_check 'Homebrew zap is the default and documented as destructive cleanup'
+else
+  fail_check 'Homebrew cleanup policy is not explicit'
+fi
+
+legacy_alias="$HOME/.dotfiles"
+if [ -e "$legacy_alias" ] || [ -L "$legacy_alias" ]; then
+  fail_check "legacy hidden alias exists; use \$HOME/dotfiles or DOTFILES_ROOT"
+else
+  pass_check 'no legacy hidden dotfiles alias exists'
+fi
+
+firstmate_home="${FIRSTMATE_HOME:-$HOME/firstmate}"
+firstmate_config="$firstmate_home/config"
+if [ -e "$firstmate_home/.git" ]; then
+  expected_harness=''
+  if find_pi_signed >/dev/null 2>&1; then
+    expected_harness='pi-signed'
+  elif find_pi_plain >/dev/null 2>&1; then
+    expected_harness='pi'
+  else
+    degraded_check 'pi-signed and pi are unavailable; crew-harness resolution is unproven'
+  fi
+  check_firstmate_leaf() {
+    local name=$1 expected=$2 expected_tmp
+    if [ ! -f "$firstmate_config/$name" ] || [ -L "$firstmate_config/$name" ]; then
+      fail_check "Firstmate config/$name is missing"
+      return
+    fi
+    expected_tmp=$(mktemp "${TMPDIR:-/tmp}/dot-doctor-expected.XXXXXX")
+    printf '%s\n' "$expected" >"$expected_tmp"
+    if cmp -s "$expected_tmp" "$firstmate_config/$name"; then
+      pass_check "Firstmate config/$name is $expected"
+    else
+      fail_check "Firstmate config/$name differs (expected $expected)"
+    fi
+    rm -f "$expected_tmp"
+  }
+  check_firstmate_leaf backend herdr
+  if [ -n "$expected_harness" ]; then
+    check_firstmate_leaf crew-harness "$expected_harness"
+  fi
+  check_firstmate_leaf backlog-backend tasks-axi
+  if [ -f "$firstmate_config/crew-dispatch.json" ] && [ ! -L "$firstmate_config/crew-dispatch.json" ] \
+    && command -v jq >/dev/null 2>&1 && jq empty "$firstmate_config/crew-dispatch.json" >/dev/null 2>&1 \
+    && cmp -s "$ROOT/home/.config/firstmate/crew-dispatch.json" "$firstmate_config/crew-dispatch.json"; then
+    pass_check 'Firstmate crew-dispatch.json matches authored configuration'
+  else
+    fail_check 'Firstmate crew-dispatch.json is missing or differs from authored configuration'
+  fi
+else
+  fail_check "Firstmate checkout is missing at $firstmate_home"
+fi
+
+if [ -e "$firstmate_home/.git" ]; then
+  firstmate_origin=$(git -C "$firstmate_home" remote get-url origin 2>/dev/null || true)
+  case "$firstmate_origin" in
+    https://github.com/kunchenguid/firstmate.git|https://github.com/kunchenguid/firstmate|git@github.com:kunchenguid/firstmate.git) pass_check 'Firstmate origin is Kun upstream' ;;
+    '') degraded_check 'Firstmate origin is not configured' ;;
+    *) fail_check "Firstmate origin is not Kun upstream: $(printf '%s\n' "$firstmate_origin" | redact_origin)" ;;
+  esac
+fi
+
+if command -v skills >/dev/null 2>&1; then
+  skills_json=$(mktemp "${TMPDIR:-/tmp}/dotfiles-skills.XXXXXX")
+  if skills list -g --json >"$skills_json" 2>/dev/null && command -v jq >/dev/null 2>&1; then
+    local_skill_names=$(jq -r '.[]? | select(.name != "backpass" and .name != "remote-pi" and .name != "agent-network" and (.source == null or .sourceType == "local")) | .name' "$skills_json" 2>/dev/null || printf '__parse_error__')
+    if [ "$local_skill_names" = '__parse_error__' ]; then
+      fail_check 'global Skills registry output could not be parsed'
+    elif jq -e 'any(.[]?; .name == "tmux")' "$skills_json" >/dev/null 2>&1; then
+      fail_check 'global Skills registry contains the unselected tmux skill; remove it with update-skills --seed'
+    elif [ -n "$local_skill_names" ]; then
+      fail_check "global Skills registry has local/unidentified sources: $(printf '%s' "$local_skill_names" | tr '\n' ' ')"
+    else
+      required_skill_sources=(
+        kunchenguid/firstmate kunchenguid/vision kunchenguid/no-mistakes
+        kunchenguid/axi kunchenguid/lavish-axi kunchenguid/gnhf
+        mattpocock/skills mitsuhiko/agent-stuff pbakaus/impeccable
+        jacobaraujo7/remote_pi
+      )
+      missing_skill_sources=()
+      for source in "${required_skill_sources[@]}"; do
+        if ! jq -e --arg source "$source" 'any(.[]?; .source == $source)' "$skills_json" >/dev/null 2>&1; then
+          missing_skill_sources+=("$source")
+        fi
+      done
+      if ((${#missing_skill_sources[@]} > 0)); then
+        fail_check "global Skills registry is missing sources: ${missing_skill_sources[*]}"
+      else
+        pass_check 'global Skills registry reports required upstream sources'
+      fi
+    fi
+  else
+    fail_check 'global Skills registry could not be queried'
+  fi
+  rm -f "$skills_json"
+else
+  degraded_check 'Skills client is unavailable; global source identity is unproven'
+fi
+
+tracked_runtime=$(git -C "$ROOT" ls-files | grep -E '(^|/)(auth|trust|sessions?|state|npm)/|(^|/)(auth|trust)\.json$' || true)
+if [ -z "$tracked_runtime" ]; then
+  pass_check 'runtime, authentication, and session paths are not tracked'
+else
+  fail_check "runtime paths are tracked: $tracked_runtime"
+fi
+
+for tool in git nix; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    pass_check "$tool is available"
+  else
+    degraded_check "$tool is unavailable"
+  fi
+done
+if find_pi_signed >/dev/null 2>&1; then
+  pass_check 'pi-signed is available (preferred Pi backend)'
+elif find_pi_plain >/dev/null 2>&1; then
+  degraded_check 'pi-signed is unavailable; using unsigned pi fallback'
+else
+  degraded_check 'Pi is unavailable; Pi-dependent workflows are unproven'
+fi
+
+av_resolver="$ROOT/home/bin/resolve-trusted-tool"
+av_bin=''
+jq_bin=''
+if [ -x "$av_resolver" ]; then
+  av_bin=$("$av_resolver" av 2>/dev/null || true)
+  jq_bin=$("$av_resolver" jq 2>/dev/null || true)
+fi
+if [ -n "$av_bin" ] && [ -n "$jq_bin" ]; then
+  av_doctor=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-doctor.XXXXXX")
+  if "$av_bin" doctor --json >"$av_doctor" 2>/dev/null; then
+    if ! "$jq_bin" -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$av_doctor" >/dev/null 2>&1; then
+      av_doctor_issues=parse-error
+    else
+      av_doctor_issues=$("$jq_bin" '[.results[].issues[]] | length' "$av_doctor" 2>/dev/null || printf parse-error)
+    fi
+    case "$av_doctor_issues" in
+      0) pass_check 'Automic Vault doctor reports no unresolved hardening issues' ;;
+      ''|*[!0-9]*) fail_check 'Automic Vault doctor output could not be parsed' ;;
+      *) fail_check "Automic Vault doctor reports $av_doctor_issues unresolved issue(s)" ;;
+    esac
+  else
+    fail_check 'Automic Vault doctor failed; hardening status is unproven'
+  fi
+  rm -f "$av_doctor"
+  av_scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX")
+  if "$av_bin" scan --json >"$av_scan" 2>/dev/null; then
+    if ! "$jq_bin" -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$av_scan" >/dev/null 2>&1; then
+      av_blocking=parse-error
+    else
+      av_blocking=$("$jq_bin" '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
+    fi
+    case "$av_blocking" in
+      ''|*[!0-9]*) fail_check 'Automic Vault scan output could not be parsed' ;;
+      0) pass_check 'Automic Vault scan reports no HIGH or CRITICAL findings' ;;
+      *) fail_check "Automic Vault scan reports $av_blocking unresolved HIGH/CRITICAL finding(s)" ;;
+    esac
+  else
+    fail_check 'Automic Vault scan failed; managed security status is unproven'
+  fi
+  rm -f "$av_scan"
+else
+  fail_check 'Automic Vault CLI is unavailable; managed security status is unproven'
+fi
+
+# AV treats writable directories ahead of trusted system/package-manager bins
+# as a managed HIGH finding. Home Manager emits the trusted-first order; report
+# a clear blocking diagnostic if a stale shell still violates it.
+path_order_check() {
+  local old_ifs="$IFS" entry position=0 first_trusted=999999 first_writable=999999
+  IFS=:
+  for entry in $PATH; do
+    case "$entry" in
+      /usr/bin|/bin|/usr/sbin|/sbin|/opt/homebrew/bin|/opt/homebrew/sbin|/run/current-system/sw/bin|/nix/var/nix/profiles/default/bin|/usr/local/bin)
+        [ "$first_trusted" -eq 999999 ] && first_trusted=$position ;;
+      "$HOME/.local/bin"|"$HOME/.local/npm/bin"|"$HOME/firstmate/bin"|"$HOME/.local/share/pnpm/bin")
+        [ "$first_writable" -eq 999999 ] && first_writable=$position ;;
+    esac
+    position=$((position + 1))
+  done
+  IFS="$old_ifs"
+  if [ "$first_writable" -lt "$first_trusted" ]; then
+    fail_check 'writable PATH entries precede trusted system paths; reload the activated shell before claiming managed security'
+  else
+    pass_check 'PATH places trusted system/package-manager bins before writable user bins'
+  fi
+}
+path_order_check
+for tool in darwin-rebuild brew herdr topgrade treehouse no-mistakes gh gh-axi \
+  chrome-devtools-axi lavish-axi tasks-axi quota-axi backpass acpx skills \
+  container ssh claude codex; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    pass_check "$tool is available"
+  else
+    degraded_check "$tool is unavailable"
+  fi
+done
+
+if command -v gh >/dev/null 2>&1; then
+  if env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GH_HOST gh auth status --hostname github.com >/dev/null 2>&1; then
+    pass_check 'GitHub OAuth credential is available through gh'
+  else
+    degraded_check 'GitHub OAuth is not authenticated; bootstrap must complete browser/device sign-in'
+  fi
+else
+  degraded_check 'gh is unavailable; GitHub authentication is unproven'
+fi
+
+if [ -f "$HOME/.ssh/id_ed25519" ] && [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
+  pass_check 'Ed25519 SSH identity files are present'
+else
+  degraded_check 'Ed25519 SSH identity is unavailable; bootstrap must create it interactively'
+fi
+
+git_origin=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
+case "$git_origin" in
+  https://github.com/rvzaku/dotfiles.git|git@github.com:rvzaku/dotfiles.git) pass_check 'dotfiles origin is rvzaku/dotfiles' ;;
+  '') degraded_check 'dotfiles origin is not configured' ;;
+  *) degraded_check "dotfiles origin is unexpected: $(printf '%s\n' "$git_origin" | redact_origin)" ;;
+esac
+if git -C "$ROOT" remote get-url upstream >/dev/null 2>&1; then
+  pass_check 'Kun dotfiles upstream remote is configured'
+else
+  degraded_check 'Kun dotfiles upstream remote is not configured'
+fi
+
+if command -v npm >/dev/null 2>&1; then
+  npm_prefix=$(NPM_CONFIG_USERCONFIG=/dev/null npm config get prefix 2>/dev/null || true)
+  case "$npm_prefix" in
+    /nix/store/*) fail_check "npm global prefix points into read-only Nix store: $npm_prefix" ;;
+    "$HOME/.local/npm") pass_check 'npm global prefix is user-owned at ~/.local/npm' ;;
+    '') degraded_check 'npm global prefix could not be determined' ;;
+    *) degraded_check "npm global prefix is outside the declared ~/.local/npm path: $npm_prefix" ;;
+  esac
+else
+  degraded_check 'npm is unavailable; global prefix is unproven'
+fi
+
+cursor_backup_root="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/cursor-leftovers"
+if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then
+  fail_check 'Cursor tooling is present but explicitly forbidden by this workspace'
+elif [ -e "$HOME/.cursor" ] || [ -L "$HOME/.cursor" ]; then
+  fail_check 'Cursor leftover is present; run bootstrap.sh to move it into the protected backup root'
+elif find "$cursor_backup_root" -mindepth 2 -maxdepth 2 -name .cursor -print -quit 2>/dev/null | grep -q .; then
+  pass_check 'Cursor leftover was preserved in the protected backup root'
+else
+  pass_check 'Cursor tooling is absent'
+fi
+
+if command -v nix >/dev/null 2>&1; then
+  if nix flake check --no-build --no-write-lock-file "$ROOT" >/dev/null 2>&1; then
+    pass_check 'flake evaluates without writing flake.lock'
+  else
+    fail_check 'flake evaluation failed'
+  fi
+else
+  degraded_check 'flake evaluation is unproven because nix is unavailable'
+fi
+
+container_bin=/usr/local/bin/container
+container_provenance=/var/db/com.apple.container-installer.provenance
+container_verifier="$ROOT/home/bin/verify-apple-container"
+if [ -x "$container_verifier" ] && "$container_verifier" --installed "$container_bin" "$container_provenance" >/dev/null 2>&1; then
+  if "$container_bin" system status >/dev/null 2>&1; then
+    pass_check 'Apple Container system is running'
+  else
+    fail_check 'Apple Container CLI is installed but its system service is not running'
+  fi
+else
+  fail_check 'Apple Container CLI is unavailable or its Apple provenance is unproven'
+fi
+
+if [ "$problems" -gt 0 ]; then
+  printf 'dot-doctor: FAIL - %s blocking issue(s), %s degraded check(s)\n' "$problems" "$degraded" >&2
+  exit 1
+fi
+printf 'dot-doctor: OK - no blocking issues; %s degraded check(s) remain unproven\n' "$degraded"
+exit 0

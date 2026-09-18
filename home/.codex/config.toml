@@ -1,4 +1,6 @@
 # Autonomous mode is the default for every project. Independent validation and
 # no-mistakes escalation remain mandatory in home/AGENTS.md.
 approval_policy = "never"
+cli_auth_credentials_store = "keyring"
+
 sandbox_mode = "danger-full-access"

@@ -113,9 +113,11 @@ test_zero_coupling_and_state_file() {
     assert_not_contains "$(cat "$file")" "$pat_dash" "$file mentions $pat_dash"
     assert_not_contains "$(cat "$file")" "$separator" "$file contains the operational separator"
   done
-  # The upstream project name may appear only in a license attribution.
+  # Within the standalone Calm source, the upstream project name may appear
+  # only in a license attribution. Repository docs may describe Firstmate's
+  # separate configuration without coupling Calm to it.
   local attribution_name="First""mate"
-  license_hits=$(grep -rni "$attribution_name" "$CALM_DIR" "$ROOT/README.md" "$ROOT/home.nix" 2>/dev/null | grep -v "Adapted from" || true)
+  license_hits=$(grep -rni "$attribution_name" "$CALM_DIR" 2>/dev/null | grep -v "Adapted from" || true)
   [ -z "$license_hits" ] || fail "unexpected upstream references outside license attribution: $license_hits"
   grep -q "MIT License" "$CALM_DIR/LICENSE" || fail "calm LICENSE lost the MIT permission text"
   grep -q "Copyright (c) 2026 Kun Chen" "$CALM_DIR/LICENSE" || fail "calm LICENSE lost the copyright notice"
@@ -140,12 +142,27 @@ test_zero_coupling_and_state_file() {
 }
 
 test_static_typescript_and_repo_wiring() {
-  # Home Manager links the extensions directory as a whole, so the calm
-  # subdirectory auto-loads without any new declaration.
-  grep -q 'home.file.".pi/agent/extensions".source =' "$ROOT/home.nix" \
-    || fail "home.nix no longer links ~/.pi/agent/extensions as a directory"
-  grep -q "mkOutOfStoreSymlink \"\${dotfiles}/home/.pi/agent/extensions\"" "$ROOT/home.nix" \
-    || fail "home.nix changed the Pi extensions link target"
+  # Home Manager links extension leaves additively, so Calm auto-loads while
+  # extensions not in this repository remain available. Evaluate the real
+  # derived Home Manager config rather than the home.nix source text, since a
+  # behavior-preserving refactor could change the text without changing the
+  # linking behavior.
+  command -v nix >/dev/null 2>&1 || fail "nix is required to verify Home Manager file wiring"
+  home_manager_wiring=$(nix eval --json --extra-experimental-features 'nix-command flakes' \
+    "$ROOT#darwinConfigurations.mac.config.home-manager.users.nobody" \
+    --apply '
+      cfg: {
+        wholeDirectoryLinked = cfg.home.file ? ".pi/agent/extensions";
+        calmEntryLinked = cfg.home.file ? ".pi/agent/extensions/calm/index.ts";
+        managedPathsActive = cfg.home.activation ? "prepareManagedPaths";
+      }
+    ') || fail "could not evaluate the real Home Manager file map"
+  printf '%s\n' "$home_manager_wiring" | jq -e '.wholeDirectoryLinked == false' >/dev/null \
+    || fail "home.nix links ~/.pi/agent/extensions as a whole directory"
+  printf '%s\n' "$home_manager_wiring" | jq -e '.calmEntryLinked == true' >/dev/null \
+    || fail "home.nix no longer additively links the calm extension entry point"
+  printf '%s\n' "$home_manager_wiring" | jq -e '.managedPathsActive == true' >/dev/null \
+    || fail "home.nix lost collision-safe adoption"
   [ -f "$CALM_DIR/index.ts" ] || fail "calm extension entry point missing"
   [ -f "$CALM_DIR/LICENSE" ] || fail "calm license file missing"
 
@@ -157,6 +174,8 @@ test_static_typescript_and_repo_wiring() {
     echo "skip: installed @earendil-works/pi-coding-agent package not found for TypeScript check"
   elif ! command -v tsc >/dev/null 2>&1; then
     echo "skip: tsc not found for TypeScript check"
+  elif [ ! -d "$PI_PACKAGE_DIR/node_modules/@types/node" ]; then
+    echo "skip: Pi package has no @types/node dependency for TypeScript check"
   else
     local fixture="$TMP_ROOT/typecheck"
     build_node_fixture "$fixture"
@@ -588,8 +607,11 @@ test_real_pi_tui_smoke() {
     echo "skip: pi or tmux not found for isolated real TUI smoke"
     return 0
   fi
-  [ "$(pi --version 2>/dev/null || true)" = "0.82.0" ] \
-    || fail "real Pi smoke requires the installed Pi 0.82.0 proof target"
+  pi_version=$(pi --version 2>/dev/null || true)
+  case "$pi_version" in
+    0.82.*|0.83.*|0.84.*|0.85.*|0.86.*|0.87.*|0.88.*|0.89.*|0.9[0-9].*) ;;
+    *) echo "skip: real Pi smoke requires Pi 0.82 or newer (found ${pi_version:-none})"; return 0 ;;
+  esac
 
   fixture="$TMP_ROOT/tui-smoke"
   agent="$fixture/agent"

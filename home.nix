@@ -3,15 +3,240 @@
   lib,
   pkgs,
   user,
+  homeDirectory,
+  dotfilesRoot ? "",
   ...
 }:
 
 let
-  dotfiles = "${config.home.homeDirectory}/.dotfiles";
+  backpassConfig =
+    let
+      source = builtins.fromJSON (builtins.readFile ./home/.config/backpass/config.json);
+    in
+    pkgs.writeText "backpass-config.json" (
+      builtins.toJSON (
+        source
+        // {
+          user = source.user // {
+            skillsDir = "${dotfiles}/home/.agents/skills/backpass";
+          };
+        }
+      )
+    );
+  # The checkout is normally $HOME/dotfiles. apply-darwin.sh passes an
+  # explicit root when a fixture or worktree lives elsewhere; this keeps
+  # out-of-store links portable without creating a hidden alias.
+  dotfiles = if dotfilesRoot != "" then dotfilesRoot else "${config.home.homeDirectory}/dotfiles";
+  piSettingsState = "${config.home.homeDirectory}/.local/state/dotfiles/pi-agent-settings.json";
+  piSettingsTarget = "${config.home.homeDirectory}/.pi/agent/settings.json";
+
+  runtimeArtifact =
+    sourceRelative:
+    lib.hasPrefix ".config/herdr/" sourceRelative && sourceRelative != ".config/herdr/config.toml";
+
+  # Enumerate only leaf resources. Linking a whole directory would replace
+  # existing Pi skills/themes/extensions and would prevent Home Manager from
+  # coexisting with local additions.
+  recursiveFiles =
+    relative:
+    let
+      sourceDir = ./. + "/home/${relative}";
+      entries = builtins.readDir sourceDir;
+    in
+    lib.concatMap (
+      name:
+      let
+        child = if relative == "" then name else "${relative}/${name}";
+      in
+      if entries.${name} == "directory" then
+        recursiveFiles child
+      else if runtimeArtifact child then
+        [ ]
+      else
+        [ child ]
+    ) (builtins.attrNames entries);
+
+  fileLink = sourceRelative: {
+    source =
+      if sourceRelative == ".config/backpass/config.json" then
+        backpassConfig
+      else
+        config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/${sourceRelative}";
+    # Collision adoption runs immediately before Home Manager's own check.
+    # Do not use Home Manager's force escape hatch: unknown paths must remain
+    # protected and a failed adoption must fail closed.
+  };
+
+  directoryPairs =
+    sourcePrefix: targetPrefix:
+    map (
+      sourceRelative:
+      let
+        relative = lib.removePrefix "${sourcePrefix}/" sourceRelative;
+      in
+      {
+        source = sourceRelative;
+        target = "${targetPrefix}/${relative}";
+      }
+    ) (recursiveFiles sourcePrefix);
+
+  directoryRoots = [
+    {
+      source = ".config/wezterm";
+      target = ".config/wezterm";
+    }
+    {
+      source = ".config/nvim";
+      target = ".config/nvim";
+    }
+    {
+      source = ".config/herdr";
+      target = ".config/herdr";
+    }
+    {
+      source = ".config/opencode";
+      target = ".config/opencode";
+    }
+    {
+      source = ".agents/skills/backpass";
+      target = ".agents/skills/backpass";
+    }
+    {
+      source = ".agents/skills/backpass";
+      target = ".claude/skills/backpass";
+    }
+    {
+      source = ".agents/skills/backpass";
+      target = ".codex/skills/backpass";
+    }
+    {
+      source = ".pi/agent/themes";
+      target = ".pi/agent/themes";
+    }
+    {
+      source = ".pi/agent/extensions";
+      target = ".pi/agent/extensions";
+    }
+  ];
+
+  publicBinCommands = [
+    "rebuild"
+    "topgrade-raw"
+    "agent-claude-yolo"
+    "agent-codex-yolo"
+    "agent-grok-yolo"
+    "agent-opencode-yolo"
+    "agent-pi-yolo"
+    "backpass-apply-qualified"
+    "dot-doctor"
+    "ensure-agent-tools"
+    "update-agent-tools"
+    "update-firstmate"
+  ];
+
+  publicBinPairs = map (command: {
+    source = "bin/${command}";
+    target = ".local/bin/${command}";
+  }) publicBinCommands;
+
+  # Previous iterations linked the whole repository bin directory. Keep that
+  # path as migration-only so activation can replace the old directory link
+  # with a real user-owned bin directory without exposing every repo helper.
+  migrationDirectoryRoots = [
+    {
+      source = "bin";
+      target = ".local/bin";
+    }
+    {
+      source = ".agents/skills";
+      target = ".agents/skills";
+    }
+    {
+      source = ".agents/skills";
+      target = ".claude/skills";
+    }
+    {
+      source = ".agents/skills";
+      target = ".codex/skills";
+    }
+  ];
+
+  # Single source of truth for the explicit (non-directoryRoots) managed
+  # leaves: both the bash backup manifest and the Home Manager file map are
+  # derived from this list so they cannot drift out of sync.
+  explicitPairs = [
+    {
+      source = ".config/backpass/config.json";
+      target = ".config/backpass/config.json";
+    }
+    {
+      source = ".claude/settings.json";
+      # Keep the authored base immutable while Claude owns its writable user
+      # settings file (which it updates with model/session preferences).
+      target = ".claude/settings.base.json";
+    }
+    {
+      source = "AGENTS.md";
+      target = ".claude/CLAUDE.md";
+    }
+    {
+      source = "AGENTS.md";
+      target = ".agents/AGENTS.md";
+    }
+    {
+      source = "AGENTS.md";
+      target = ".codex/AGENTS.md";
+    }
+    {
+      source = ".codex/config.toml";
+      target = ".codex/config.toml";
+    }
+    {
+      source = "AGENTS.md";
+      target = ".config/opencode/AGENTS.md";
+    }
+    {
+      source = ".pi/agent/models.json";
+      target = ".pi/agent/models.json";
+    }
+  ];
+
+  targetIsExistingSymlink =
+    target:
+    let
+      evaluationHome = builtins.getEnv "DOTFILES_HOME";
+      targetPath = "${homeDirectory}/${target}";
+      targetType = if builtins.pathExists targetPath then builtins.readFileType targetPath else "missing";
+    in
+    evaluationHome != "" && targetType == "symlink";
+
+  managedPairs =
+    explicitPairs
+    ++ publicBinPairs
+    ++ lib.concatMap ({ source, target }: directoryPairs source target) directoryRoots;
+
+  # Existing symlinks are handled by prepare-managed-paths: known Home
+  # Manager generations are backed up and relinked, while unknown links are
+  # preserved and omitted from this generation so one collision cannot abort
+  # unrelated convergence.
+  convergedPairs = lib.filter (pair: !(targetIsExistingSymlink pair.target)) managedPairs;
+
+  managedFiles =
+    lib.listToAttrs (
+      map ({ source, target }: {
+        name = target;
+        value = fileLink source;
+      }) convergedPairs
+    )
+    // lib.optionalAttrs (!(targetIsExistingSymlink ".pi/agent/settings.json")) {
+      ".pi/agent/settings.json" = {
+        source = config.lib.file.mkOutOfStoreSymlink piSettingsState;
+      };
+    };
 in
 {
   home.username = user;
-  home.homeDirectory = "/Users/${user}";
+  home.homeDirectory = homeDirectory;
   home.stateVersion = "24.11";
 
   # Keep the complete developer toolchain in the Home Manager closure. The
@@ -37,7 +262,6 @@ in
     wget
     curl
     rsync
-    tmux
     git
     git-lfs
     gh
@@ -50,6 +274,20 @@ in
     hyperfine
     lazygit
     neovim
+    # Required command-line utilities whose short names are part of the
+    # workspace contract (nom, nix-tree, nvd, nixd, tldr, and delta included).
+    nix-output-monitor
+    comma
+    nix-tree
+    nvd
+    nixd
+    atuin
+    yazi
+    btop
+    duf
+    ouch
+    tealdeer
+    delta
     shellcheck
     shfmt
     hadolint
@@ -107,7 +345,7 @@ in
     zls
 
     # Pi is the globally available coding-agent CLI; its authored settings and
-    # pinned extensions live below home/.pi/agent.
+    # package declarations live below home/.pi/agent.
     pi-coding-agent
 
     # Keep existing typography and add the common terminal/editor families.
@@ -119,22 +357,44 @@ in
   ];
 
   fonts.fontconfig.enable = true;
+  # Keep trusted system/package-manager directories ahead of writable user
+  # bins. This resolves AV PATH-order findings without losing any tools.
   home.sessionPath = [
-    "$HOME/.local/bin"
+    "/usr/bin"
+    "/bin"
+    "/usr/sbin"
+    "/sbin"
+    "/usr/local/bin"
+    "/opt/homebrew/bin"
+    "/opt/homebrew/sbin"
+    "/run/current-system/sw/bin"
+    "/nix/var/nix/profiles/default/bin"
+    "/etc/profiles/per-user/$USER/bin"
+    "$HOME/.nix-profile/bin"
+    "$HOME/.local/npm/bin"
     "$HOME/firstmate/bin"
-    "$HOME/.npm/bin"
+    "$HOME/.local/bin"
+    "$HOME/.local/share/pnpm/bin"
   ];
   home.sessionVariables = {
     EDITOR = "nvim";
     VISUAL = "nvim";
-    NPM_CONFIG_PREFIX = "$HOME/.local";
+    NPM_CONFIG_PREFIX = "${homeDirectory}/.local/npm";
+    PNPM_HOME = "${homeDirectory}/.local/share/pnpm";
   };
+
+  # Create the user-owned npm and pnpm prefixes before activation installs tools.
+  home.activation.ensureUserNpmPrefix = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    mkdir -p ${lib.escapeShellArg "${homeDirectory}/.local/npm/bin"} \
+      ${lib.escapeShellArg "${homeDirectory}/.local/npm/lib"} \
+      ${lib.escapeShellArg "${homeDirectory}/.local/share/pnpm"}
+  '';
 
   # Pin the global npm tools used by Backpass, AXI, and Remote Pi during a
   # declarative activation. Topgrade owns later latest-version updates.
   home.activation.agentNpmTools = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     if command -v npm >/dev/null 2>&1; then
-      NPM_CONFIG_PREFIX="$HOME/.local" npm install --global --no-fund --no-audit \
+      if ! NPM_CONFIG_PREFIX=${lib.escapeShellArg "${homeDirectory}/.local/npm"} npm install --global --no-fund --no-audit \
         acpx@0.15.1 \
         gh-axi@0.1.35 \
         chrome-devtools-axi@0.1.34 \
@@ -142,7 +402,10 @@ in
         quota-axi@0.1.44 \
         lavish-axi@0.1.68 \
         backpass@0.1.22 \
-        remote-pi@0.7.0
+        skills@1.5.26 \
+        remote-pi@0.7.0; then
+        echo "warning: pinned global agent npm tools could not be installed" >&2
+      fi
     else
       echo "warning: npm is unavailable; global agent npm tools were not installed" >&2
     fi
@@ -170,15 +433,25 @@ in
   programs.topgrade = {
     enable = true;
     settings = {
+      # Determinate Nix owns daemon/self-updates; Topgrade must not invoke
+      # `nix upgrade-nix` while this checkout manages its flake transaction.
+      disable = [ "nix" ];
       misc = {
-        assume_yes = true;
+        assume_yes = false;
         no_retry = true;
         cleanup = true;
       };
       commands = {
-        "Update pinned agent tools and Firstmate safely" = "update-agent-tools";
+        "Update pinned agent tools and Firstmate safely" = "DOTFILES_FULL_UPDATE=1 update-agent-tools";
       };
     };
+  };
+
+  programs.git = {
+    enable = true;
+    # Disable ambient credential helpers; GitHub uses the pinned SSH identity
+    # and Automic Vault remains the only secret authority.
+    settings.credential.helper = "";
   };
 
   programs.zsh = {
@@ -187,7 +460,20 @@ in
     syntaxHighlighting.enable = true;
     initContent = ''
       bindkey '^f' autosuggest-accept
-      export PATH="$HOME/.local/bin:$HOME/firstmate/bin:$PATH"
+      # Reassert mutable npm ownership even when a parent shell exported
+      # Home Manager's session guard before this login shell started.
+      export NPM_CONFIG_PREFIX="$HOME/.local/npm"
+      export PNPM_HOME="$HOME/.local/share/pnpm"
+      typeset -a _dotfiles_path_tail=()
+      for _dotfiles_entry in ''${(s.:.)PATH}; do
+        case "$_dotfiles_entry" in
+          /usr/bin|/bin|/usr/sbin|/sbin|/opt/homebrew/bin|/opt/homebrew/sbin|/run/current-system/sw/bin|/nix/var/nix/profiles/default/bin|/etc/profiles/per-user/$USER/bin|/usr/local/bin|/nix/var/nix/profiles/per-user/$USER/bin|$HOME/.nix-profile/bin|$HOME/.local/npm/bin|$HOME/firstmate/bin|$HOME/.local/bin|$HOME/.local/share/pnpm/bin) continue ;;
+        esac
+        _dotfiles_path_tail+=("$_dotfiles_entry")
+      done
+      PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$USER/bin:$HOME/.nix-profile/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin''${_dotfiles_path_tail:+:''${(j.:.)_dotfiles_path_tail}}"
+      export PATH
+      unset _dotfiles_entry _dotfiles_path_tail
     '';
     shellAliases = {
       ".." = "cd ..";
@@ -199,10 +485,7 @@ in
       co = "agent-codex-yolo";
       oc = "agent-opencode-yolo";
       gp = "agent-grok-yolo";
-      cu = "agent-cursor-yolo";
       py = "agent-pi-yolo";
-      backpass-learn = "backpass --scope user --strict";
-      backpass-apply = "backpass-apply-qualified";
     };
   };
 
@@ -219,73 +502,50 @@ in
     };
   };
 
-  # Edit-in-place: authored files stay in the repository while user-level
-  # harnesses read them from their normal global locations.
-  home.file.".config/wezterm".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/wezterm";
-  home.file.".config/nvim".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/nvim";
-  home.file.".config/herdr".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/herdr";
-  home.file.".config/backpass/config.json".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/backpass/config.json";
-  home.file."firstmate/config/crew-dispatch.json".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/firstmate/crew-dispatch.json";
-  home.file.".config/opencode/opencode.json".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/opencode/opencode.json";
+  # Prepare exact managed leaves before Home Manager's collision check. This
+  # preserves pre-existing files, migrates old whole-directory links to real
+  # directories, and composes Pi settings without touching runtime state.
+  home.activation.prepareManagedPaths = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+        manifest=$(mktemp)
+        directories=$(mktemp)
+        {
+    ${
+      lib.concatMapStrings (
+        pair:
+        "      printf '%s\\0%s\\0' ${lib.escapeShellArg pair.target} ${
+                lib.escapeShellArg (
+                  if pair.source == ".config/backpass/config.json" then
+                    backpassConfig
+                  else
+                    "${dotfiles}/home/${pair.source}"
+                )
+              }\n"
+      ) managedPairs
+    }    } > "$manifest"
+        {
+    ${
+      lib.concatMapStrings (
+        root:
+        "      printf '%s\\0%s\\0' ${lib.escapeShellArg root.target} ${lib.escapeShellArg "${dotfiles}/home/${root.source}"}\n"
+      ) (migrationDirectoryRoots ++ directoryRoots)
+    }    } > "$directories"
+        ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-managed-paths" \
+          --manifest0 "$manifest" \
+          --directories0 "$directories" \
+          --settings-source "${dotfiles}/home/.pi/agent/settings.json" \
+          --settings-state ${lib.escapeShellArg piSettingsState} \
+          --settings-target ${lib.escapeShellArg piSettingsTarget} \
+          --jq ${lib.escapeShellArg "${pkgs.jq}/bin/jq"}
+        rm -f "$manifest" "$directories"
+  '';
 
-  home.file.".claude/settings.json".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.claude/settings.json";
-  home.file.".claude/CLAUDE.md".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/AGENTS.md";
-  home.file.".claude/skills".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.agents/skills";
+  # Claude Code mutates ~/.claude/settings.json during normal use. Detach the
+  # predecessor repository link and seed a user-owned copy before Home
+  # Manager checks links; the authored base remains separately managed.
+  home.activation.prepareClaudeSettings = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+    ${pkgs.bash}/bin/bash "${dotfiles}/home/bin/prepare-claude-settings" \
+      "${dotfiles}/home/.claude/settings.json" ${lib.escapeShellArg "${homeDirectory}/.claude/settings.json"}
+  '';
 
-  home.file.".agents/AGENTS.md".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/AGENTS.md";
-  home.file.".agents/skills".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.agents/skills";
-
-  home.file.".codex/AGENTS.md".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/AGENTS.md";
-  home.file.".codex/config.toml".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.codex/config.toml";
-  home.file.".codex/skills".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.agents/skills";
-  home.file.".config/opencode/AGENTS.md".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/AGENTS.md";
-
-  # Keep Pi credentials, trust decisions, sessions, pairing keys, caches, and
-  # other runtime state outside the source tree. Only authored resources link.
-  home.file.".pi/agent/themes".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.pi/agent/themes";
-  home.file.".pi/agent/extensions".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.pi/agent/extensions";
-  home.file.".pi/agent/models.json".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.pi/agent/models.json";
-  home.file.".pi/agent/settings.json".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.pi/agent/settings.json";
-
-  # Link only authored wrappers. Do not link the whole directory: npm's global
-  # prefix writes generated tool shims into ~/.local/bin at activation time.
-  home.file.".local/bin/agent-claude-yolo".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/agent-claude-yolo";
-  home.file.".local/bin/agent-codex-yolo".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/agent-codex-yolo";
-  home.file.".local/bin/agent-cursor-yolo".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/agent-cursor-yolo";
-  home.file.".local/bin/agent-grok-yolo".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/agent-grok-yolo";
-  home.file.".local/bin/agent-opencode-yolo".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/agent-opencode-yolo";
-  home.file.".local/bin/agent-pi-yolo".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/agent-pi-yolo";
-  home.file.".local/bin/backpass-apply-qualified".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/backpass-apply-qualified";
-  home.file.".local/bin/ensure-agent-tools".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/ensure-agent-tools";
-  home.file.".local/bin/update-agent-tools".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/update-agent-tools";
-  home.file.".local/bin/update-firstmate".source =
-    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/bin/update-firstmate";
+  home.file = managedFiles;
 }

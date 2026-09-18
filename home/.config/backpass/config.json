@@ -1,6 +1,6 @@
 {
   "discovery": {
-    "harnesses": ["claude", "codex", "pi", "opencode", "grok", "cursor", "hermes"],
+    "harnesses": ["claude", "codex", "pi", "opencode", "grok", "hermes"],
     "since": "30d",
     "includeProjects": [],
     "excludeProjects": [],
@@ -9,7 +9,7 @@
   },
   "user": {
     "memoryFiles": [".agents/AGENTS.md"],
-    "skillsDir": "~/.dotfiles/home/.agents/skills/backpass",
+    "skillsDir": "$DOTFILES_ROOT/home/.agents/skills/backpass",
     "skillsDirs": [".agents/skills", ".claude/skills", ".codex/skills"],
     "budgetTokens": 5000,
     "minGapEvidence": 2,
@@ -19,7 +19,7 @@
     "sampleHalfLife": "14d",
     "autoAgent": true,
     "discovery": {
-      "harnesses": ["claude", "codex", "pi", "opencode", "grok", "cursor", "hermes"],
+      "harnesses": ["claude", "codex", "pi", "opencode", "grok", "hermes"],
       "since": "30d",
       "includeProjects": [],
       "excludeProjects": [],

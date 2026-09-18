@@ -96,7 +96,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setHiddenThinkingLabel(calmPresentationIsActive() ? "" : undefined);
     removeTerminalInputHandler?.();
     removeTerminalInputHandler = ctx.ui.onTerminalInput((data) => {
-      if (!getKeybindings().matches(data, "tui.input.submit")) return;
+      if (!getKeybindings().matches(data, "tui.input.submit")) return undefined;
 
       const input = ctx.ui.getEditorText().trim();
       if (
@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
         input !== "/export" &&
         !input.startsWith("/export ")
       ) {
-        return;
+        return undefined;
       }
 
       // /export and /share render through the same tool renderers the transcript
@@ -117,6 +117,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.setToolsExpanded(!expanded);
         ctx.ui.setToolsExpanded(expanded);
       }, 0);
+      return undefined;
     });
   });
 

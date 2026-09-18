@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Seed only the selected global Skills and update the registry exactly once.
+# Backpass and the Remote Pi compatibility adapters remain authored local
+# resources; upstream Skills retain their source identity in the registry.
+set -u
+
+seed_specs=(
+  'https://github.com/kunchenguid/firstmate|stow'
+  'https://github.com/kunchenguid/vision|vision'
+  'https://github.com/kunchenguid/no-mistakes|no-mistakes'
+  'https://github.com/kunchenguid/axi|axi'
+  'https://github.com/kunchenguid/lavish-axi|lavish'
+  'https://github.com/kunchenguid/gnhf|gnhf'
+  'https://github.com/mattpocock/skills|ask-matt code-review codebase-design diagnosing-bugs domain-modeling grill-with-docs implement improve-codebase-architecture prototype research resolving-merge-conflicts setup-matt-pocock-skills tdd to-spec to-tickets triage wayfinder wizard grill-me grilling handoff teach to-questionnaire wait-what writing-for-agents git-guardrails-claude-code migrate-to-shoehorn scaffold-exercises setup-pre-commit'
+  'https://github.com/mitsuhiko/agent-stuff|anachb apple-mail audio-transcription commit ghidra github google-workspace librarian native-web-search oebb-scotty openscad pi-share sentry summarize update-changelog uv web-browser'
+  'https://github.com/pbakaus/impeccable|impeccable'
+  'https://github.com/jacobaraujo7/remote_pi|deploy-cockpit deploy-server'
+)
+
+seed_sources() {
+  local spec source selected
+  local -a selected_names
+  for spec in "${seed_specs[@]}"; do
+    source=${spec%%|*}
+    selected=${spec#*|}
+    # Pass selected names as individual --skill values; never use --all, which
+    # installs unrelated source skills (including tmux).
+    read -r -a selected_names <<<"$selected"
+    if ! skills add "$source" --global --skill "${selected_names[@]}" --yes; then
+      printf 'skills: failed to seed selected skills from %s; preserving existing skills\n' "$source" >&2
+      return 1
+    fi
+  done
+  # A previous --all run may have left the explicitly unselected tmux skill.
+  # Remove only that known unselected entry; authored Backpass/adapter content
+  # is never touched.
+  if command -v jq >/dev/null 2>&1; then
+    local existing
+    existing=$(skills list -g --json 2>/dev/null || true)
+    if printf '%s' "$existing" | jq -e 'any(.[]?; .name == "tmux")' >/dev/null 2>&1; then
+      skills remove tmux --global --yes || {
+        printf '%s\n' 'skills: could not remove the unselected tmux skill; preserving it and reporting degraded state' >&2
+        return 1
+      }
+    fi
+  fi
+}
+
+if [ "${1:-}" = '--seed' ]; then
+  shift
+  [ "$#" -eq 0 ] || { printf 'usage: %s [--seed]\n' "$0" >&2; exit 2; }
+  if ! command -v skills >/dev/null 2>&1; then
+    printf '%s\n' 'skills: global skills client unavailable; seeding is unproven' >&2
+    exit 1
+  fi
+  seed_sources || exit 1
+elif [ "$#" -gt 0 ]; then
+  printf 'usage: %s [--seed]\n' "$0" >&2
+  exit 2
+fi
+
+if ! command -v skills >/dev/null 2>&1; then
+  printf '%s\n' 'skills: global skills client unavailable; global skill update is unproven' >&2
+  exit 1
+fi
+
+if skills update --global --yes; then
+  printf '%s\n' 'skills: updated all globally registered skills exactly once'
+else
+  status=$?
+  printf 'skills: global update failed (exit %s); existing skills were left in place\n' "$status" >&2
+  exit "$status"
+fi

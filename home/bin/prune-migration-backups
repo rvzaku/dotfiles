@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Remove only old Home Manager adoption backups after a complete update.
+# This is intentionally not called by rebuild or by a failed transaction.
+set -u
+
+backup_base="${DOTFILES_BACKUP_BASE:-${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/home-manager}"
+retention_days="${DOTFILES_BACKUP_RETENTION_DAYS:-15}"
+case "$retention_days" in
+  ''|*[!0-9]*)
+    printf 'backups: invalid retention period %s; refusing to prune\n' "$retention_days" >&2
+    exit 2
+    ;;
+esac
+if [ ! -d "$backup_base" ]; then
+  printf 'backups: no migration backup directory; nothing to prune\n'
+  exit 0
+fi
+
+# The directory is exclusively owned by this configuration. Do not follow
+# links and never inspect or remove anything outside its immediate children.
+find "$backup_base" -mindepth 1 -maxdepth 1 -type d -mtime "+$retention_days" \
+  -exec rm -r -- {} +
+printf 'backups: pruned migration snapshots older than %s days\n' "$retention_days"

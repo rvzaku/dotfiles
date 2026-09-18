@@ -14,6 +14,6 @@ backpass --scope user --strict
 backpass-apply-qualified
 ```
 
-The configured 30-day corpus includes Claude, Codex, Pi, OpenCode, Grok, Cursor, and Hermes sessions. Backpass still requires its normal evidence and project-gap gates. `backpass-apply-qualified` only automates the final ACCEPT decision for a proposal that Backpass already emitted; it prints a short changed-files summary and never bypasses analysis, freshness checks, evidence gates, or no-mistakes validation. Review its output and run the independent project validation path after applying changes.
+The configured 30-day corpus includes Claude, Codex, Pi, OpenCode, Grok, and Hermes sessions. Backpass still requires its normal evidence and project-gap gates. `backpass-apply-qualified` only automates the final ACCEPT decision for a proposal that Backpass already emitted; it prints a short changed-files summary and never bypasses analysis, freshness checks, evidence gates, or no-mistakes validation. Review its output and run the independent project validation path after applying changes.
 
 Do not add credentials, raw transcripts, caches, proposals, evidence, or runtime state to the repository. User-scope state belongs under `~/.config/backpass/user/`.

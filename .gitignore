@@ -1,7 +1,7 @@
-# herdr runtime artifacts (regenerated at runtime; never commit)
-home/.config/herdr/*.log
-home/.config/herdr/session.json
-home/.config/herdr/*.sock
+# Herdr runtime artifacts (regenerated at runtime; never commit). The authored
+# config is the only tracked leaf in this directory.
+home/.config/herdr/*
+!home/.config/herdr/config.toml
 
 # macOS + nix build noise
 .DS_Store
@@ -31,3 +31,7 @@ home/.pi/agent/npm/
 home/.pi/agent/trust.json
 home/.pi/agent/sessions/
 home/.pi/remote/
+
+# Home Manager generates this target from programs.topgrade.settings; a stale
+# checkout copy must never be mistaken for authored Topgrade configuration.
+home/.config/topgrade.toml

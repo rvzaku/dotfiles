@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -u
+
+tool=${1:-}
+case "$tool" in
+  av|jq) ;;
+  *) exit 2 ;;
+esac
+
+user_profile=''
+if [ -x /usr/bin/id ]; then
+  user_name=$(/usr/bin/id -un 2>/dev/null || true)
+  case "$user_name" in
+    ''|*[!A-Za-z0-9._-]*) ;;
+    *) user_profile="/etc/profiles/per-user/$user_name/bin" ;;
+  esac
+fi
+for directory in \
+  /usr/bin /bin /usr/sbin /sbin \
+  /opt/homebrew/bin /opt/homebrew/sbin \
+  /run/current-system/sw/bin /nix/var/nix/profiles/default/bin \
+  "$user_profile" /usr/local/bin; do
+  [ -n "$directory" ] || continue
+  candidate="$directory/$tool"
+  if [ -x "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    exit 0
+  fi
+done
+exit 1

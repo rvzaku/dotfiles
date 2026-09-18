@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+# Apply this checkout's locked nix-darwin configuration.
+#
+# This is deliberately the only narrow helper shared by bootstrap and rebuild:
+# it owns the Homebrew zap warning and restores flake.lock if the switch fails.
+set -u
+# shellcheck disable=SC2329 # invoked by the EXIT trap
+failure_report() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    printf 'dotfiles: apply-darwin failed (exit %s); inspect the preceding step and rerun after remediation\n' "$status" >&2
+  fi
+}
+trap failure_report EXIT
+
+
+resolve_script_root() {
+  local script_path="${BASH_SOURCE[0]}" link script_dir
+  while [ -L "$script_path" ]; do
+    script_dir=$(cd "$(dirname "$script_path")" && pwd -P)
+    link=$(readlink "$script_path")
+    case "$link" in
+      /*) script_path=$link ;;
+      *) script_path="$script_dir/$link" ;;
+    esac
+  done
+  cd "$(dirname "$script_path")/../.." && pwd -P
+}
+
+resolve_host() {
+  local host
+  if [ -n "${DOTFILES_HOST:-}" ]; then
+    printf '%s\n' "$DOTFILES_HOST"
+    return 0
+  fi
+  if command -v scutil >/dev/null 2>&1 && host=$(scutil --get LocalHostName 2>/dev/null); then
+    printf '%s\n' "$host"
+  else
+    hostname -s 2>/dev/null || printf '%s\n' mac
+  fi
+}
+
+resolve_root() {
+  local candidate
+  if [ -n "${DOTFILES_ROOT:-}" ]; then
+    candidate=$DOTFILES_ROOT
+  else
+    candidate=$(resolve_script_root)
+  fi
+  if ! candidate=$(git -C "$candidate" rev-parse --show-toplevel 2>/dev/null); then
+    printf 'dotfiles: cannot resolve a Git checkout from %s\n' "$candidate" >&2
+    return 1
+  fi
+  printf '%s\n' "$candidate"
+}
+
+load_nix_profile() {
+  local profile=/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  if [ -r "$profile" ]; then
+    # shellcheck disable=SC1090
+    . "$profile"
+  fi
+}
+
+# Normalize Homebrew's tap-qualified declarations and inventories to the
+# installed short name (brew list --{formula,cask} reports short names).
+normalize_homebrew_names() {
+  local name
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    case "$name" in
+      */*) name=${name##*/} ;;
+    esac
+    printf '%s\n' "$name"
+  done
+}
+
+warn_homebrew_inventory() {
+  if ! command -v brew >/dev/null 2>&1; then
+    printf '%s\n' 'dotfiles: exact Homebrew inventory before zap: formulae: none; casks: none; taps: none; nothing will be removed.' >&2
+    return 0
+  fi
+  if ! command -v nix >/dev/null 2>&1; then
+    printf '%s\n' 'dotfiles: cannot compute the exact zap removal inventory (nix missing); refusing activation' >&2
+    return 1
+  fi
+  local config_ref="${ROOT}#darwinConfigurations.${DOTFILES_HOST}.config.homebrew" item
+  local declared_formulae declared_casks declared_taps formulae casks taps declared_raw
+  local names_expr='xs: builtins.concatStringsSep "\n" (map (x: if builtins.isAttrs x then (x.name or (throw "Homebrew entry has no name")) else x) xs)'
+  declared_raw=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.brews" 2>/dev/null) || {
+    printf 'dotfiles: could not evaluate declared Homebrew formulae for the exact zap inventory\n' >&2
+    return 1
+  }
+  declared_formulae=$(printf '%s\n' "$declared_raw" | normalize_homebrew_names)
+  declared_raw=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.casks" 2>/dev/null) || {
+    printf 'dotfiles: could not evaluate declared Homebrew casks for the exact zap inventory\n' >&2
+    return 1
+  }
+  declared_casks=$(printf '%s\n' "$declared_raw" | normalize_homebrew_names)
+  declared_taps=$(DOTFILES_USER="$DOTFILES_USER" DOTFILES_HOST="$DOTFILES_HOST" nix eval --impure --raw --apply "$names_expr" "$config_ref.taps" 2>/dev/null) || {
+    printf 'dotfiles: could not evaluate declared Homebrew taps for the exact zap inventory\n' >&2
+    return 1
+  }
+  formulae=$(brew list --formula 2>/dev/null || true)
+  casks=$(brew list --cask 2>/dev/null || true)
+  taps=$(brew tap 2>/dev/null || true)
+  printf '%s\n' 'dotfiles: exact Homebrew inventory before zap (undeclared entries below would be removed):' >&2
+  printf '  formulae: %s\n' "$(printf '%s\n' "$formulae" | tr '\n' ' ')" >&2
+  printf '  casks: %s\n' "$(printf '%s\n' "$casks" | tr '\n' ' ')" >&2
+  printf '  taps: %s\n' "$(printf '%s\n' "$taps" | tr '\n' ' ')" >&2
+  printf '  formulae to remove: ' >&2
+  for item in $formulae; do
+    grep -Fxq "${item##*/}" <<<"$declared_formulae" || printf '%s ' "$item" >&2
+  done
+  printf '\n' >&2
+  printf '  casks to remove: ' >&2
+  for item in $casks; do
+    grep -Fxq "${item##*/}" <<<"$declared_casks" || printf '%s ' "$item" >&2
+  done
+  printf '\n  taps to remove: ' >&2
+  for item in $taps; do
+    grep -Fxq "$item" <<<"$declared_taps" || printf '%s ' "$item" >&2
+  done
+  printf '\n' >&2
+}
+
+warn_homebrew_cleanup() {
+  cat >&2 <<'WARNING'
+dotfiles: WARNING - this switch may remove Homebrew items not declared in configuration.nix.
+dotfiles: The exact formulae, casks, and taps above are the inventory exposed before activation.
+WARNING
+  if [ "${DOTFILES_MACHINE_ROLE:-other}" = own ]; then
+    if [ -t 0 ] && [ "${DOTFILES_ASSUME_HOMEBREW_ZAP:-}" != 1 ]; then
+      printf 'dotfiles: continue with Homebrew zap cleanup on the declared own Mac? [y/N] ' >&2
+      read -r answer || return 1
+      case "$answer" in
+        y|Y|yes|YES) ;;
+        *) printf 'dotfiles: switch cancelled before Homebrew cleanup\n' >&2; return 1 ;;
+      esac
+    fi
+  elif [ "${DOTFILES_ASSUME_HOMEBREW_ZAP:-}" = 1 ]; then
+    printf '%s\n' 'dotfiles: owner explicitly acknowledged zap on a protective machine' >&2
+  elif [ -t 0 ]; then
+    printf 'dotfiles: remove undeclared Homebrew items on this non-own Mac? [y/N] ' >&2
+    read -r answer || return 1
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *) printf '%s\n' 'dotfiles: owner declined zap; stopping before activation (nothing was removed or half-applied)' >&2; return 1 ;;
+    esac
+  else
+    printf '%s\n' 'dotfiles: protective machine has no owner confirmation; refusing zap-capable activation' >&2
+    return 1
+  fi
+}
+
+ROOT=$(resolve_root) || exit 1
+DOTFILES_USER="${DOTFILES_USER:-$(id -un)}"
+DOTFILES_HOME="${DOTFILES_HOME:-$HOME}"
+DOTFILES_HOST="${DOTFILES_HOST:-$(resolve_host)}"
+machine_marker="${DOTFILES_MACHINE_MARKER:-$HOME/.config/dotfiles/machine-role}"
+if [ -z "${DOTFILES_MACHINE_ROLE:-}" ] && [ -f "$machine_marker" ]; then
+  DOTFILES_MACHINE_ROLE=$(cat "$machine_marker" 2>/dev/null || true)
+fi
+if [ -z "${DOTFILES_MACHINE_ROLE:-}" ]; then
+  if [ -t 0 ]; then
+    printf 'Is this your own Mac (zap undeclared Homebrew items)? [y/N] ' >&2
+    read -r role_answer || exit 1
+    case "$role_answer" in
+      y|Y|yes|YES) DOTFILES_MACHINE_ROLE=own ;;
+      *) DOTFILES_MACHINE_ROLE=other ;;
+    esac
+    mkdir -p "$(dirname "$machine_marker")"
+    printf '%s\n' "$DOTFILES_MACHINE_ROLE" >"$machine_marker"
+    chmod 600 "$machine_marker"
+    printf 'dotfiles: recorded machine role %s at %s\n' "$DOTFILES_MACHINE_ROLE" "$machine_marker" >&2
+  else
+    DOTFILES_MACHINE_ROLE=other
+    printf 'dotfiles: no machine-role marker and no interactive terminal; using protective role=other. Set it explicitly with: mkdir -p %q && printf "own\\n" > %q (or replace own with other)\n' "$(dirname "$machine_marker")" "$machine_marker" >&2
+  fi
+fi
+case "$DOTFILES_MACHINE_ROLE" in
+  own|other) export DOTFILES_MACHINE_ROLE ;;
+  *)
+    printf 'dotfiles: invalid machine-role %q; use own or other at %s\n' "$DOTFILES_MACHINE_ROLE" "$machine_marker" >&2
+    exit 1
+    ;;
+esac
+legacy_alias="$HOME/.dotfiles"
+if [ -L "$legacy_alias" ]; then
+  legacy_target=$(cd "$legacy_alias" 2>/dev/null && pwd -P || true)
+  if [ "$legacy_target" = "$ROOT" ]; then
+    rm -- "$legacy_alias"
+    printf 'dotfiles: removed the legacy hidden alias %s\n' "$legacy_alias"
+  else
+    printf 'dotfiles: refusing an unrelated legacy hidden alias at %s\n' "$legacy_alias" >&2
+    exit 1
+  fi
+elif [ -e "$legacy_alias" ]; then
+  printf 'dotfiles: refusing an unrelated path at %s\n' "$legacy_alias" >&2
+  exit 1
+fi
+# Preserve an explicitly supplied test/operator PATH; source Determinate's
+# profile only when Nix is not already discoverable.
+if ! command -v nix >/dev/null 2>&1; then
+  load_nix_profile
+fi
+if ! command -v nix >/dev/null 2>&1; then
+  printf 'dotfiles: nix is unavailable; install Determinate Nix with bootstrap.sh first\n' >&2
+  exit 1
+fi
+
+mode=${1:-normal}
+case "$mode" in
+  --bootstrap|normal) ;;
+  *) printf 'usage: %s [--bootstrap]\n' "$0" >&2; exit 2 ;;
+esac
+
+warn_homebrew_inventory || exit 1
+warn_homebrew_cleanup || exit 1
+
+lock_backup=''
+if [ -f "$ROOT/flake.lock" ]; then
+  lock_backup=$(mktemp "${TMPDIR:-/tmp}/dotfiles-flake.lock.XXXXXX")
+  if ! cp -p "$ROOT/flake.lock" "$lock_backup"; then
+    rm -f "$lock_backup"
+    printf 'dotfiles: cannot snapshot flake.lock; refusing the switch\n' >&2
+    exit 1
+  fi
+fi
+# shellcheck disable=SC2329 # invoked by EXIT and signal traps
+restore_lock() {
+  [ -z "$lock_backup" ] || cp -p "$lock_backup" "$ROOT/flake.lock"
+}
+# shellcheck disable=SC2329 # invoked by the EXIT and signal traps
+cleanup() {
+  [ -z "$lock_backup" ] || rm -f "$lock_backup"
+}
+# shellcheck disable=SC2329 # invoked by signal traps
+handle_interrupt() {
+  local signal_status=$1
+  trap - INT TERM HUP
+  if ! restore_lock; then
+    printf 'dotfiles: signal interruption occurred and flake.lock rollback failed\n' >&2
+    signal_status=1
+  fi
+  cleanup
+  exit "$signal_status"
+}
+trap cleanup EXIT
+trap 'handle_interrupt 130' INT
+trap 'handle_interrupt 143' TERM
+trap 'handle_interrupt 129' HUP
+
+NIX_BIN=$(command -v nix)
+set +e
+if [ "$mode" = --bootstrap ] || ! command -v darwin-rebuild >/dev/null 2>&1; then
+  # nix-darwin's system switch is root-owned. Let sudo establish root's HOME
+  # while retaining the derived user's identity variables for Home Manager;
+  # sudo prompts here rather than running a privileged activation silently.
+  sudo -H env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOME=$DOTFILES_HOME" "DOTFILES_HOST=$DOTFILES_HOST" \
+    "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" "$NIX_BIN" run \
+    github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild -- \
+    switch --impure --flake "$ROOT#$DOTFILES_HOST"
+else
+  sudo -H env "DOTFILES_ROOT=$ROOT" "DOTFILES_USER=$DOTFILES_USER" "DOTFILES_HOME=$DOTFILES_HOME" "DOTFILES_HOST=$DOTFILES_HOST" \
+    "DOTFILES_MACHINE_ROLE=$DOTFILES_MACHINE_ROLE" darwin-rebuild \
+    switch --impure --flake "$ROOT#$DOTFILES_HOST"
+fi
+status=$?
+set -e
+
+if [ "$status" -ne 0 ]; then
+  if [ -n "$lock_backup" ] && ! cp -p "$lock_backup" "$ROOT/flake.lock"; then
+    printf 'dotfiles: switch failed and flake.lock rollback failed\n' >&2
+    exit 1
+  fi
+  printf 'dotfiles: switch failed; restored flake.lock\n' >&2
+  exit "$status"
+fi
+printf 'dotfiles: switch completed\n'
+exit 0
