@@ -14,7 +14,7 @@ verify_package_signature() {
   local signature
   [ -x "$cat_bin" ] && [ -x "$grep_bin" ] && [ -x "$awk_bin" ] || return 1
   signature=$("$cat_bin")
-  if ! printf '%s\n' "$signature" | "$grep_bin" -Eq 'Status: signed by a certificate trusted by (Mac OS X|macOS)' \
+  if ! printf '%s\n' "$signature" | "$grep_bin" -Eq 'Status: signed by (a certificate trusted by (Mac OS X|macOS)|a developer certificate issued by Apple for distribution)' \
     || ! printf '%s\n' "$signature" | "$awk_bin" '
       /^ *Certificate Chain:/ { in_chain = 1; next }
       in_chain && /Developer ID Installer: Apple Inc\./ { installer = 1 }

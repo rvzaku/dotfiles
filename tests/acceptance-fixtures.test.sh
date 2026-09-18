@@ -236,7 +236,7 @@ test_cursor_backup_fixture() {
 }
 
 test_installer_verification_fixture() {
-  local verifier="$ROOT/home/bin/verify-apple-container" good_signature bad_signature
+  local verifier="$ROOT/home/bin/verify-apple-container" good_signature current_signature bad_signature
   [ -x "$verifier" ] || fail 'Apple Container signature verifier is not executable'
   good_signature=$(cat <<'EOF'
 Package "container.pkg":
@@ -248,6 +248,9 @@ EOF
   )
   printf '%s\n' "$good_signature" | "$verifier" --package-signature \
     || fail 'valid Apple Container authority chain was rejected'
+  current_signature=${good_signature/'Status: signed by a certificate trusted by macOS'/'Status: signed by a developer certificate issued by Apple for distribution'}
+  printf '%s\n' "$current_signature" | "$verifier" --package-signature \
+    || fail 'current Apple Container authority status was rejected'
   bad_signature=${good_signature/Apple Root CA/Example Root CA}
   if printf '%s\n' "$bad_signature" | "$verifier" --package-signature >/dev/null 2>&1; then
     fail 'unanchored Apple Container authority chain was accepted'
