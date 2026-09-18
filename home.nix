@@ -354,12 +354,12 @@ in
     "/bin"
     "/usr/sbin"
     "/sbin"
+    "/usr/local/bin"
     "/opt/homebrew/bin"
     "/opt/homebrew/sbin"
     "/run/current-system/sw/bin"
     "/nix/var/nix/profiles/default/bin"
     "/etc/profiles/per-user/$USER/bin"
-    "/usr/local/bin"
     "$HOME/.nix-profile/bin"
     "$HOME/.local/npm/bin"
     "$HOME/firstmate/bin"
@@ -461,7 +461,7 @@ in
         esac
         _dotfiles_path_tail+=("$_dotfiles_entry")
       done
-      PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$USER/bin:/usr/local/bin:$HOME/.nix-profile/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin''${_dotfiles_path_tail:+:''${(j.:.)_dotfiles_path_tail}}"
+      PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/etc/profiles/per-user/$USER/bin:$HOME/.nix-profile/bin:$HOME/.local/npm/bin:$HOME/firstmate/bin:$HOME/.local/bin:$HOME/.local/share/pnpm/bin''${_dotfiles_path_tail:+:''${(j.:.)_dotfiles_path_tail}}"
       export PATH
       unset _dotfiles_entry _dotfiles_path_tail
     '';

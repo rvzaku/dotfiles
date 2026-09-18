@@ -217,43 +217,46 @@ else
   degraded_check 'Pi is unavailable; Pi-dependent workflows are unproven'
 fi
 
-if command -v av >/dev/null 2>&1; then
-  if ! command -v jq >/dev/null 2>&1; then
-    fail_check 'Automic Vault is available but jq is missing, so AV findings cannot be evaluated'
+av_resolver="$ROOT/home/bin/resolve-trusted-tool"
+av_bin=''
+jq_bin=''
+if [ -x "$av_resolver" ]; then
+  av_bin=$("$av_resolver" av 2>/dev/null || true)
+  jq_bin=$("$av_resolver" jq 2>/dev/null || true)
+fi
+if [ -n "$av_bin" ] && [ -n "$jq_bin" ]; then
+  av_doctor=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-doctor.XXXXXX")
+  if "$av_bin" doctor --json >"$av_doctor" 2>/dev/null; then
+    if ! "$jq_bin" -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$av_doctor" >/dev/null 2>&1; then
+      av_doctor_issues=parse-error
+    else
+      av_doctor_issues=$("$jq_bin" '[.results[].issues[]] | length' "$av_doctor" 2>/dev/null || printf parse-error)
+    fi
+    case "$av_doctor_issues" in
+      0) pass_check 'Automic Vault doctor reports no unresolved hardening issues' ;;
+      ''|*[!0-9]*) fail_check 'Automic Vault doctor output could not be parsed' ;;
+      *) fail_check "Automic Vault doctor reports $av_doctor_issues unresolved issue(s)" ;;
+    esac
   else
-    av_doctor=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-doctor.XXXXXX")
-    if av doctor --json >"$av_doctor" 2>/dev/null; then
-      if ! jq -e '(.results | type) == "array" and all(.results[]; (.issues | type) == "array")' "$av_doctor" >/dev/null 2>&1; then
-        av_doctor_issues=parse-error
-      else
-        av_doctor_issues=$(jq '[.results[].issues[]] | length' "$av_doctor" 2>/dev/null || printf parse-error)
-      fi
-      case "$av_doctor_issues" in
-        0) pass_check 'Automic Vault doctor reports no unresolved hardening issues' ;;
-        ''|*[!0-9]*) fail_check 'Automic Vault doctor output could not be parsed' ;;
-        *) fail_check "Automic Vault doctor reports $av_doctor_issues unresolved issue(s)" ;;
-      esac
-    else
-      fail_check 'Automic Vault doctor failed; hardening status is unproven'
-    fi
-    rm -f "$av_doctor"
-    av_scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX")
-    if av scan --json >"$av_scan" 2>/dev/null; then
-      if ! jq -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$av_scan" >/dev/null 2>&1; then
-        av_blocking=parse-error
-      else
-        av_blocking=$(jq '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
-      fi
-      case "$av_blocking" in
-        ''|*[!0-9]*) fail_check 'Automic Vault scan output could not be parsed' ;;
-        0) pass_check 'Automic Vault scan reports no HIGH or CRITICAL findings' ;;
-        *) fail_check "Automic Vault scan reports $av_blocking unresolved HIGH/CRITICAL finding(s)" ;;
-      esac
-    else
-      fail_check 'Automic Vault scan failed; managed security status is unproven'
-    fi
-    rm -f "$av_scan"
+    fail_check 'Automic Vault doctor failed; hardening status is unproven'
   fi
+  rm -f "$av_doctor"
+  av_scan=$(mktemp "${TMPDIR:-/tmp}/dotfiles-av-scan.XXXXXX")
+  if "$av_bin" scan --json >"$av_scan" 2>/dev/null; then
+    if ! "$jq_bin" -e '(.findings | type) == "array" and all(.findings[]; (.severity | type) == "string")' "$av_scan" >/dev/null 2>&1; then
+      av_blocking=parse-error
+    else
+      av_blocking=$("$jq_bin" '[.findings[] | select((.severity | ascii_downcase) == "high" or (.severity | ascii_downcase) == "critical")] | length' "$av_scan" 2>/dev/null || printf 'parse-error')
+    fi
+    case "$av_blocking" in
+      ''|*[!0-9]*) fail_check 'Automic Vault scan output could not be parsed' ;;
+      0) pass_check 'Automic Vault scan reports no HIGH or CRITICAL findings' ;;
+      *) fail_check "Automic Vault scan reports $av_blocking unresolved HIGH/CRITICAL finding(s)" ;;
+    esac
+  else
+    fail_check 'Automic Vault scan failed; managed security status is unproven'
+  fi
+  rm -f "$av_scan"
 else
   fail_check 'Automic Vault CLI is unavailable; managed security status is unproven'
 fi

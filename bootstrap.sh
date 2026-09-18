@@ -443,7 +443,7 @@ ensure_apple_container() {
     pkg="${TMPDIR:-/tmp}/container-$$.pkg"
     curl --proto '=https' --tlsv1.2 -fsSL \
       https://api.github.com/repos/apple/container/releases/latest >"$release_json"
-    pkg_url=$(jq -r '[.assets[]? | select(.name | endswith(".pkg")) | .browser_download_url] | first // empty' "$release_json")
+    pkg_url=$(jq -r '[.assets[]? | select(.name | endswith("-installer-signed.pkg")) | .browser_download_url] | first // empty' "$release_json")
     case "$pkg_url" in
       https://github.com/apple/container/releases/download/*/*.pkg) ;;
       *) rm -f "$release_json"; printf '%s\n' 'bootstrap: Apple Container release did not expose an official signed pkg' >&2; return 1 ;;

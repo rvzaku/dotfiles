@@ -67,7 +67,7 @@ test_public_commands() {
   if printf '%s' "$actual" | jq -e 'index(".local/bin/mate")' >/dev/null; then
     fail 'mate command leaked into public command links'
   fi
-  for command in apply-darwin prepare-managed-paths prepare-pi-settings prepare-claude-settings prune-migration-backups update-skills verify-apple-container; do
+  for command in apply-darwin prepare-managed-paths prepare-pi-settings prepare-claude-settings prune-migration-backups update-skills resolve-trusted-tool verify-apple-container; do
     [ -x "$ROOT/home/bin/$command" ] || fail "repository helper $command is not executable"
   done
   pass 'public command links are allowlisted and helpers stay private'
@@ -258,8 +258,19 @@ SCRIPT
 }
 
 test_av_authority_blocks_high_findings() {
-  local doctor_home="$TMP_ROOT/av-doctor-home" status
-  mkdir -p "$doctor_home"
+  local status jq_bin fixture="$TMP_ROOT/verify-av-fixture"
+  mkdir -p "$fixture"
+  jq_bin=$(command -v jq)
+  cp "$ROOT/home/bin/verify-av" "$fixture/verify-av"
+  cat >"$fixture/resolve-trusted-tool" <<SCRIPT
+#!/usr/bin/env bash
+case "\${1:-}" in
+  av) printf '%s\\n' "$FAKE/av" ;;
+  jq) printf '%s\\n' "$jq_bin" ;;
+  *) exit 2 ;;
+esac
+SCRIPT
+  chmod +x "$fixture/verify-av" "$fixture/resolve-trusted-tool"
   cat >"$FAKE/av" <<'SCRIPT'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -268,14 +279,12 @@ case "$1 $2" in
   *) exit 2 ;;
 esac
 SCRIPT
-  cp "$(command -v jq)" "$FAKE/jq"
-  chmod +x "$FAKE/av" "$FAKE/jq"
+  chmod +x "$FAKE/av"
   set +e
-  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/av-doctor.out" 2>&1
+  "$fixture/verify-av" test >"$TMP_ROOT/av-doctor.out" 2>&1
   status=$?
   set -e
-  [ "$status" -ne 0 ] || fail 'dot-doctor claimed success with a HIGH Automic Vault finding'
+  [ "$status" -ne 0 ] || fail 'AV gate claimed success with a HIGH finding'
   assert_file_contains "$TMP_ROOT/av-doctor.out" 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' \
     'Automic Vault blocking finding was not reported'
   cat >"$FAKE/av" <<'SCRIPT'
@@ -287,12 +296,9 @@ case "$1 $2" in
 esac
 SCRIPT
   chmod +x "$FAKE/av"
-  HOME="$doctor_home" DOTFILES_ROOT="$ROOT" PATH="$FAKE:/usr/bin:/bin" \
-    "$ROOT/home/bin/dot-doctor" >"$TMP_ROOT/av-low.out" 2>&1 || true
-  if grep -Fq 'Automic Vault scan reports 1 unresolved HIGH/CRITICAL finding(s)' "$TMP_ROOT/av-low.out"; then
-    fail 'Automic Vault LOW finding was treated as blocking'
-  fi
-  rm -f "$FAKE/av" "$FAKE/jq"
+  "$fixture/verify-av" test >"$TMP_ROOT/av-low.out" 2>&1 \
+    || fail 'AV gate rejected a non-blocking LOW finding'
+  rm -f "$FAKE/av"
   pass 'Automic Vault HIGH/CRITICAL findings block managed security success'
 }
 
