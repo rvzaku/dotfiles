@@ -64,6 +64,7 @@
       "effortLevel": "medium"
     }
   },
+  "awaySummaryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark-ansi"
 }
