@@ -22,6 +22,7 @@ in
     gh
     topgrade  # the one updater; config in home/.config/topgrade.toml
     tmux      # FirstMate's default agent backend outside herdr
+    uv        # Python runner the summarize and uv agent skills rely on
     # the font everything renders in
     nerd-fonts.hack
   ];

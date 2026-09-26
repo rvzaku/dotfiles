@@ -11,3 +11,13 @@ kunchenguid/quota-axi	quota-axi
 kunchenguid/lavish-axi	lavish
 
 openclaw/acpx	acpx
+
+# Generic skills from mitsuhiko/agent-stuff; its travel and Pi-only skills are left out.
+mitsuhiko/agent-stuff	commit
+mitsuhiko/agent-stuff	github
+mitsuhiko/agent-stuff	librarian
+mitsuhiko/agent-stuff	summarize
+mitsuhiko/agent-stuff	tmux
+mitsuhiko/agent-stuff	update-changelog
+mitsuhiko/agent-stuff	uv
+mitsuhiko/agent-stuff	web-browser
