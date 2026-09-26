@@ -7,7 +7,7 @@ in
 {
   home.username = user;
   home.homeDirectory = "/Users/${user}";
-  home.stateVersion = "24.11";
+  home.stateVersion = "26.05";
   home.packages = with pkgs; [
     # cli i use constantly
     ripgrep   # fast search
@@ -16,11 +16,33 @@ in
     jq        # json on the command line
     lazygit
     neovim
+    # agent tooling runtimes; mutable npm globals live in ~/.local/npm, never the store
+    bun
+    nodejs
+    gh
+    topgrade  # the one updater; config in home/.config/topgrade.toml
+    tmux      # FirstMate's default agent backend outside herdr
     # the font everything renders in
     nerd-fonts.hack
   ];
   fonts.fontconfig.enable = true;
-  home.sessionVariables.EDITOR = "nvim";
+  home.sessionVariables = {
+    EDITOR = "nvim";
+    NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.local/npm";
+    # Claude Code only loads mod plugins (compact-adviser, FirstMate Calm) when this is exactly "1".
+    CLAUDE_CODE_ENABLE_FUNCTION_HOOKS = "1";
+  };
+  # User-local bins must be on PATH before any installer runs, or they fall back to sudo into /usr/local/bin.
+  home.sessionPath = [
+    "${config.home.homeDirectory}/.local/bin"
+    "${config.home.homeDirectory}/.local/npm/bin"
+  ];
+  # npm reads this even outside a login shell (Topgrade, scripts), so globals never target the Nix store.
+  home.file.".npmrc".text = ''
+    prefix=${config.home.homeDirectory}/.local/npm
+  '';
+
+  programs.zoxide.enable = true;  # `z <dir>` jumps to frecent directories
 
   programs.zsh = {
     enable = true;
@@ -79,4 +101,18 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/AGENTS.md";
   home.file.".config/opencode/AGENTS.md".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/AGENTS.md";
+
+  # Agent tooling overlay: manifests and helpers stay editable in the repo;
+  # installed npm tools and skills stay mutable outside the store.
+  home.file.".config/agent-tools".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/agent-tools";
+  home.file.".config/topgrade.toml".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/topgrade.toml";
+  home.file.".local/bin/agent-tools-sync".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/agent-tools-sync";
+  home.file.".local/bin/fetch-upstreams".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/fetch-upstreams";
+  # FirstMate's model routing rules (gitignored in FirstMate itself, so they live here).
+  home.file."firstmate/config/crew-dispatch.json".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/config/crew-dispatch.json";
 }

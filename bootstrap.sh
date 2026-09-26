@@ -18,7 +18,23 @@ fi
 echo "==> Step 2: symlink this repo to ~/.dotfiles"
 # home.nix resolves its mkOutOfStoreSymlink paths through ~/.dotfiles, so this
 # has to exist before the first switch or the build will fail to find them.
+# Refuse to touch a real directory there: ln would nest a link inside it.
+if [ -e ~/.dotfiles ] && [ ! -L ~/.dotfiles ]; then
+  echo "    $HOME/.dotfiles exists and is not a symlink; move it aside and re-run."
+  exit 1
+fi
 ln -sfn "$DIR" ~/.dotfiles
+if [ "$DIR" != "$HOME/dotfiles" ]; then
+  echo "    note: this checkout is at $DIR; fetch-upstreams expects ~/dotfiles."
+fi
+
+echo "==> Step 2b: FirstMate checkout at ~/firstmate"
+# Cloned before the first switch: Home Manager links FirstMate's routing config into it.
+if [ -e ~/firstmate ]; then
+  echo "    ~/firstmate already exists, skipping"
+else
+  git clone https://github.com/kunchenguid/firstmate.git ~/firstmate
+fi
 
 echo "==> Step 3: personalize the configured username"
 # Do this before any sudo call: sudo resets $USER to root, so whoami has to
@@ -60,4 +76,28 @@ sudo "$NIX_BIN" run github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild
 # If this still fails with "nix: command not found", open a new terminal
 # (Determinate adds nix to new shells' PATH) and re-run ./bootstrap.sh.
 
-echo "==> Done. Use ./rebuild.sh for future changes."
+echo "==> Step 5: agent tools and skills"
+# The helpers put the new user-local and Nix bins on PATH themselves,
+# so they work in this shell before any new login.
+"$HOME/.local/bin/agent-tools-sync"
+
+echo "==> Step 6: Kun upstream remotes"
+"$HOME/.local/bin/fetch-upstreams"
+
+echo "==> Step 7: verify from a fresh login shell"
+/bin/zsh -lic 'for c in node npm gh topgrade av treehouse no-mistakes gh-axi tasks-axi quota-axi; do
+  command -v "$c" >/dev/null || echo "    missing: $c"
+done
+echo "    npm prefix: $(npm prefix -g)"'
+
+cat <<'MSG'
+==> Done. Use ./rebuild.sh for future config changes, topgrade for updates.
+
+These stay local on purpose; do them once per machine:
+  - gh auth login                      (GitHub CLI login)
+  - git config --global user.name/user.email, and an SSH key for your fork
+  - open Automic Vault (av open) and set up its approvals and secrets
+  - sign in to claude, codex, and pi
+  - TYPESAFE_API_KEY for compact-adviser (/compact-adviser in Claude or Pi)
+    and FirstMate dispatch (~/firstmate/.env); store it in Automic Vault, not here
+MSG

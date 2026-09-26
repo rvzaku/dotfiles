@@ -1,0 +1,14 @@
+# npm CLI tools required by the agent stack.
+# One package per line.
+#
+# Installed into ~/.local/npm.
+# Updated by Topgrade's npm step.
+
+acpx
+backpass
+
+gh-axi
+chrome-devtools-axi
+lavish-axi
+tasks-axi
+quota-axi

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# --- automic-vault
+# capabilities: {}
+# ---
+# Converge the machine to the agent tools declared in ~/.config/agent-tools:
+#   npm-tools.txt  npm CLIs, installed user-locally into ~/.local/npm
+#   skills.tsv     global Agent Skills, installed through `npx skills`
+#   setup.tsv      other idempotent installs and hook setup, run only when not already done
+# Installs what is missing and never updates what is present; Topgrade owns updates.
+# Every command in the loops reads /dev/null so it cannot consume the manifest being read.
+# Needs no root and no secrets, so it is safe to rerun and safe in a fresh bootstrap.
+
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-tools"
+NPM_MANIFEST="$CONFIG_DIR/npm-tools.txt"
+SKILLS_MANIFEST="$CONFIG_DIR/skills.tsv"
+SETUP_MANIFEST="$CONFIG_DIR/setup.tsv"
+
+die() {
+  printf 'agent-tools-sync: %s\n' "$*" >&2
+  exit 1
+}
+
+# Supply-chain installs get no ambient credentials.
+unset GH_TOKEN GITHUB_TOKEN NPM_TOKEN NODE_AUTH_TOKEN TYPESAFE_API_KEY \
+  ANTHROPIC_API_KEY OPENAI_API_KEY
+
+# Work from any shell, including bootstrap before a new login: user-local bins first,
+# then the Nix and Homebrew profiles that Home Manager and nix-darwin provide.
+mkdir -p "$HOME/.local/npm" "$HOME/.local/bin"
+export NPM_CONFIG_PREFIX="$HOME/.local/npm"
+me="$(id -un)"
+export PATH="$HOME/.local/npm/bin:$HOME/.local/bin:/etc/profiles/per-user/$me/bin:/run/current-system/sw/bin:/opt/homebrew/bin:$PATH"
+
+command -v node >/dev/null 2>&1 || die "node is not available; run ./rebuild.sh first"
+command -v npm >/dev/null 2>&1 || die "npm is not available; run ./rebuild.sh first"
+command -v npx >/dev/null 2>&1 || die "npx is not available; run ./rebuild.sh first"
+
+failures=0
+fail() {
+  printf 'agent-tools-sync: %s\n' "$*" >&2
+  failures=$((failures + 1))
+}
+
+echo "==> npm agent tools"
+if [[ -f "$NPM_MANIFEST" ]]; then
+  while IFS= read -r package || [[ -n "$package" ]]; do
+    case "$package" in ""|\#*) continue ;; esac
+    if npm list --global --depth=0 "$package" </dev/null >/dev/null 2>&1; then
+      echo "    present: $package"
+    else
+      echo "    install: $package"
+      npm install --global "$package" </dev/null || fail "npm install failed: $package"
+    fi
+  done < "$NPM_MANIFEST"
+fi
+
+echo "==> global Agent Skills"
+if [[ -f "$SKILLS_MANIFEST" ]]; then
+  while IFS=$'\t' read -r repository skill || [[ -n "${repository:-}" ]]; do
+    case "${repository:-}" in ""|\#*) continue ;; esac
+    [[ -n "${skill:-}" ]] || die "missing skill name for repository: $repository"
+    # `npx skills add -g` keeps the canonical copy here and links it into each agent.
+    if [[ -f "$HOME/.agents/skills/$skill/SKILL.md" ]]; then
+      echo "    present: $skill"
+    else
+      echo "    install: $repository -> $skill"
+      npx --yes skills add "$repository" --skill "$skill" --global --yes </dev/null \
+        || fail "skill install failed: $repository -> $skill"
+    fi
+  done < "$SKILLS_MANIFEST"
+fi
+
+echo "==> other tools and hooks"
+if [[ -f "$SETUP_MANIFEST" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in ""|\#*) continue ;; esac
+    # Split on literal tabs so an empty done-when column survives.
+    name="${line%%$'\t'*}"
+    rest="${line#*$'\t'}"
+    done_when="${rest%%$'\t'*}"
+    run="${rest#*$'\t'}"
+    if [[ -n "$done_when" ]] && bash -c "$done_when" </dev/null >/dev/null 2>&1; then
+      echo "    present: $name"
+      continue
+    fi
+    echo "    setup: $name"
+    bash -c "$run" </dev/null || fail "setup failed: $name"
+  done < "$SETUP_MANIFEST"
+fi
+
+echo
+if [[ "$failures" -gt 0 ]]; then
+  die "$failures step(s) failed; fix them and rerun"
+fi
+echo "Agent tools synchronized."

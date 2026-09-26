@@ -1,0 +1,19 @@
+# Idempotent setup for agent tools that are not plain npm packages or skills.
+# name<TAB>done-when (shell test; the step is skipped when it succeeds)<TAB>run (shell)
+# Installers go to ~/.local/bin, which is on PATH, so none of them need sudo.
+
+treehouse	treehouse get --help 2>&1 | grep -q -- --lease	curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh
+no-mistakes	command -v no-mistakes	curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | NO_MISTAKES_LINK_DIR="$HOME/.local/bin" sh
+
+# AXI ambient-context hooks for Claude Code, Codex, and OpenCode (bare command names, portable).
+gh-axi hooks	grep -q '"gh-axi"' "$HOME/.claude/settings.json" && grep -q '"gh-axi"' "$HOME/.codex/hooks.json"	gh-axi setup hooks
+chrome-devtools-axi hooks	grep -q '"chrome-devtools-axi"' "$HOME/.claude/settings.json" && grep -q '"chrome-devtools-axi"' "$HOME/.codex/hooks.json"	chrome-devtools-axi setup hooks
+lavish-axi hooks	grep -q '"lavish-axi"' "$HOME/.claude/settings.json" && grep -q '"lavish-axi"' "$HOME/.codex/hooks.json"	lavish-axi setup hooks
+
+# herdr agent-state hooks; the Claude one is referenced by home/.claude/settings.json.
+herdr claude integration	herdr integration status | grep -q '^claude: current'	herdr integration install claude
+herdr codex integration	herdr integration status | grep -q '^codex: current'	herdr integration install codex
+
+# compact-adviser (Jev) for Claude Code; its Pi package is pinned in home/.pi/agent/settings.json.
+compact-adviser marketplace	claude plugin marketplace list | grep -q compact-adviser	claude plugin marketplace add https://github.com/kunchenguid/compact-adviser.git
+compact-adviser plugin	claude plugin list | grep -q compact-adviser@compact-adviser	claude plugin install compact-adviser@compact-adviser

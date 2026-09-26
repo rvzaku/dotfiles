@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Ensure each local checkout has an `upstream` remote pointing at Kun's repo, then fetch it.
+# Never merges, rebases, resets, or touches a working tree; merging stays a manual choice.
+# Repos that are not present are skipped, so this is safe on any machine and safe to rerun.
+set -euo pipefail
+
+REPOS=(
+  "$HOME/dotfiles|https://github.com/kunchenguid/dotfiles.git"
+  "$HOME/firstmate|https://github.com/kunchenguid/firstmate.git"
+)
+
+status=0
+for entry in "${REPOS[@]}"; do
+  dir="${entry%%|*}"
+  url="${entry#*|}"
+  if ! git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "skip: $dir is not a git checkout"
+    continue
+  fi
+  current="$(git -C "$dir" remote get-url upstream 2>/dev/null || true)"
+  if [ -z "$current" ]; then
+    git -C "$dir" remote add upstream "$url"
+    echo "added upstream for $dir -> $url"
+  elif [ "$current" != "$url" ]; then
+    git -C "$dir" remote set-url upstream "$url"
+    echo "repaired upstream for $dir: $current -> $url"
+  fi
+  echo "fetch: $dir upstream"
+  # Public HTTPS reads need no credentials; never prompt for any.
+  if ! GIT_TERMINAL_PROMPT=0 git -C "$dir" fetch upstream --prune; then
+    echo "error: fetching upstream for $dir failed" >&2
+    status=1
+  fi
+done
+exit "$status"

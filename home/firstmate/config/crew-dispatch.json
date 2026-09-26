@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "when": "The task is a trivial change whose edit is already fully defined, such as a one-line fix, a config value change, or a rote rename.",
+      "use": { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" },
+      "why": "Trivial fixers: the change is already specified, so the cheapest fast model is enough."
+    },
+    {
+      "when": "The task is planning a new feature, writing a spec, or investigating a complex or not yet understood bug.",
+      "use": { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" },
+      "why": "Planners: Opus 5.5 has the best return for planning; xhigh because the work is not well defined yet."
+    },
+    {
+      "when": "The task is an adversarial code review or audit of an existing change.",
+      "use": { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" },
+      "why": "GPT 6 Sol is the strongest adversarial reviewer at volume."
+    },
+    {
+      "when": "The task is highly ambiguous or creative work that truly needs premium intelligence, or an escalation to untangle a mess such as crewmates disagreeing, a spiraling review loop, or a simple change that grew into a giant PR.",
+      "approval": "captain",
+      "use": [
+        { "harness": "claude", "model": "claude-fable-5-1", "effort": "xhigh" },
+        { "harness": "codex", "model": "gpt-6-astra", "effort": "xhigh" },
+        { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" }
+      ],
+      "why": "Premium intelligence is expensive; use it only when the extra judgment is worth the cost. Opus 5.5 stands in when Fable quota is tight."
+    }
+  ],
+  "default": [
+    { "harness": "claude", "model": "claude-opus-5-5", "effort": "medium" },
+    { "harness": "codex", "model": "gpt-6-sol", "effort": "medium" }
+  ]
+}

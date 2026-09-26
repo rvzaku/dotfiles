@@ -1,0 +1,32 @@
+[misc]
+# Do not keep sudo alive in the background.
+pre_sudo = false
+sudo_loop = false
+
+# Keep Topgrade in the current terminal.
+run_in_tmux = false
+
+# Let individual tools clean their normal obsolete state.
+cleanup = true
+
+# Preserve interactive behavior for anything consequential.
+assume_yes = false
+
+# pip3 would only upgrade pip inside Apple's Command Line Tools Python.
+# Persistent tooling comes from Nix or project-local environments instead.
+disable = ["pip3"]
+
+# Report in the terminal only; macOS end-of-run notifications can open an app chooser.
+notify_end = "never"
+
+[git]
+# Do not let Topgrade generically mutate arbitrary repositories.
+pull_predefined = false
+
+[npm]
+# ~/.local/npm is user-owned. Never elevate npm.
+use_sudo = false
+
+[commands]
+# Fetch only; merging Kun's changes stays a deliberate manual step.
+"Fetch Kun upstreams" = "$HOME/.local/bin/fetch-upstreams"

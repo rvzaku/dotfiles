@@ -32,6 +32,21 @@ Running the switch builds:
 - Agent configs (Claude, Codex, opencode all share one AGENTS.md)
 - Optional Pi theme and local extensions, generic UI settings and model overrides, plus two deliberately pinned third-party Pi packages
 
+## Agent tooling overlay (this fork)
+
+This fork is a small overlay on [kunchenguid/dotfiles](https://github.com/kunchenguid/dotfiles), kept as the `upstream` remote.
+
+| Command | Owns |
+| --- | --- |
+| `./rebuild.sh` | Applies the Nix config only: runtimes (node, gh, topgrade, zoxide), PATH (`~/.local/bin`, `~/.local/npm/bin`), `~/.npmrc`, symlinks, Homebrew casks (incl. Automic Vault), Touch ID sudo |
+| `agent-tools-sync` | Installs whatever is missing from `home/.config/agent-tools/` (npm CLIs, global Agent Skills, treehouse, no-mistakes, agent hooks, compact-adviser); never updates |
+| `fetch-upstreams` | Ensures `upstream` points at Kun's dotfiles and FirstMate repos and fetches it; never merges |
+| `topgrade` | Updates everything already installed, then runs `fetch-upstreams` |
+
+`bootstrap.sh` runs all of them in order on a fresh Mac and ends with the steps that stay local on purpose: `gh auth login`, git identity and SSH key, Automic Vault setup, agent logins, and `TYPESAFE_API_KEY` (in `~/firstmate/.env` or Automic Vault, never in this repo).
+FirstMate's model routing lives in `home/firstmate/config/crew-dispatch.json`.
+To take Kun's changes: `git merge upstream/main` when you choose to.
+
 ## Prerequisites
 
 - Apple Silicon Mac, by default.
@@ -43,8 +58,9 @@ Running the switch builds:
 On a brand new Mac, from a bare clone of this repo:
 
 ```sh
-git clone https://github.com/kunchenguid/dotfiles.git
-cd dotfiles
+git clone https://github.com/rvzaku/dotfiles.git ~/dotfiles
+cd ~/dotfiles
+git remote set-url --push origin git@github.com:rvzaku/dotfiles.git  # once an SSH key is set up
 ```
 
 Before you run it: review "Make it yours" below.
@@ -55,7 +71,7 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 ./bootstrap.sh
 ```
 
-`bootstrap.sh` does four things, in order:
+`bootstrap.sh` does these things, in order:
 
 1. Installs Determinate Nix, if it isn't already installed.
 2. Symlinks this repo to `~/.dotfiles`.
@@ -63,6 +79,8 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 3. Checks the `user` configured in `flake.nix` against your actual macOS username, and offers to fix it for you if they differ.
 4. Runs the first `darwin-rebuild switch`.
    It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
+   Before this, it clones FirstMate to `~/firstmate` if missing, because Home Manager links FirstMate's routing config into it.
+5. Runs `agent-tools-sync`, then `fetch-upstreams`, then checks the result from a fresh login shell and lists the remaining local-only steps.
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 
