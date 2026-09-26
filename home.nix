@@ -50,6 +50,9 @@ in
     syntaxHighlighting.enable = true;  # commands turn green when valid
     initContent = ''
       bindkey '^f' autosuggest-accept
+      # Run topgrade from $HOME: its Claude Code step fails inside a repo that ships
+      # an unmanaged project plugin (such as ~/firstmate).
+      topgrade() { (cd ~ && command topgrade "$@") }
     '';
     shellAliases = {
       ".." = "cd ..";
@@ -112,7 +115,9 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/agent-tools-sync";
   home.file.".local/bin/fetch-upstreams".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/fetch-upstreams";
-  # FirstMate's model routing rules (gitignored in FirstMate itself, so they live here).
+  # FirstMate routing rules and my product standard; FirstMate's own repo is Kun's, so they live here.
   home.file."firstmate/config/crew-dispatch.json".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/config/crew-dispatch.json";
+  home.file."firstmate/docs/UNIVERSAL-STANDARDS.md".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/docs/UNIVERSAL-STANDARDS.md";
 }

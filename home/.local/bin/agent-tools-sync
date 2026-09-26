@@ -16,6 +16,8 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-tools"
 NPM_MANIFEST="$CONFIG_DIR/npm-tools.txt"
 SKILLS_MANIFEST="$CONFIG_DIR/skills.tsv"
 SETUP_MANIFEST="$CONFIG_DIR/setup.tsv"
+# Agents that receive global skills; naming them skips agents that cannot install globally.
+SKILL_AGENTS=(claude-code codex github-copilot opencode pi)
 
 die() {
   printf 'agent-tools-sync: %s\n' "$*" >&2
@@ -66,7 +68,8 @@ if [[ -f "$SKILLS_MANIFEST" ]]; then
       echo "    present: $skill"
     else
       echo "    install: $repository -> $skill"
-      npx --yes skills add "$repository" --skill "$skill" --global --yes </dev/null \
+      npx --yes skills add "$repository" --skill "$skill" --global --yes \
+        --agent "${SKILL_AGENTS[@]}" </dev/null \
         || fail "skill install failed: $repository -> $skill"
     fi
   done < "$SKILLS_MANIFEST"
