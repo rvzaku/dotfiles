@@ -12,7 +12,7 @@ kunchenguid/lavish-axi	lavish
 
 openclaw/acpx	acpx
 
-# Generic skills from mitsuhiko/agent-stuff; its travel and Pi-only skills are left out.
+# Skills from mitsuhiko/agent-stuff; its two Austrian travel skills (anachb, oebb-scotty) are left out.
 mitsuhiko/agent-stuff	commit
 mitsuhiko/agent-stuff	github
 mitsuhiko/agent-stuff	librarian
@@ -21,3 +21,11 @@ mitsuhiko/agent-stuff	tmux
 mitsuhiko/agent-stuff	update-changelog
 mitsuhiko/agent-stuff	uv
 mitsuhiko/agent-stuff	web-browser
+mitsuhiko/agent-stuff	native-web-search
+mitsuhiko/agent-stuff	pi-share
+mitsuhiko/agent-stuff	apple-mail
+mitsuhiko/agent-stuff	google-workspace
+mitsuhiko/agent-stuff	sentry
+mitsuhiko/agent-stuff	ghidra
+mitsuhiko/agent-stuff	openscad
+mitsuhiko/agent-stuff	audio-transcription

@@ -18,7 +18,7 @@
     {
       "source": "git:github.com/mitsuhiko/agent-stuff@122e2994adddb113c04764c5697217dae120fcc6",
       "extensions": ["extensions/*.ts", "!extensions/go-to-bed.ts"],
-      "skills": ["skills/*", "!skills/anachb", "!skills/oebb-scotty", "!skills/commit", "!skills/github", "!skills/librarian", "!skills/summarize", "!skills/tmux", "!skills/update-changelog", "!skills/uv", "!skills/web-browser"]
+      "skills": []
     }
   ],
   "lastChangelogVersion": "0.87.1",
