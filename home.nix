@@ -129,4 +129,9 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/config/crew-dispatch.json";
   home.file."firstmate/docs/UNIVERSAL-STANDARDS.md".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/docs/UNIVERSAL-STANDARDS.md";
+  # My routing, effort, and quota-pacing preferences; force replaces the hand-made link from before this was managed.
+  home.file."firstmate/data/captain.md" = {
+    source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/data/captain.md";
+    force = true;
+  };
 }
