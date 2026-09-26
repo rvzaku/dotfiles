@@ -11,6 +11,8 @@
   - Spread work across providers by headroom, but only at task boundaries; route through Jev and `config/crew-dispatch.json` at task level and never switch a model mid-session.
   - Protect invested context: when something must pause, pause the worker with the least sunk context, never one that is deep into a task; never relaunch without a concrete reason.
   - Scale effort to task definition (medium when well defined, xhigh when not) and keep briefs token-efficient; quality is never traded away - every deliverable meets `docs/UNIVERSAL-STANDARDS.md`.
-  - Mistakes to never repeat: launching many frontier xhigh workers at once without checking quota; judging capacity from the short window alone; pausing and relaunching workers repeatedly (churn); moving work to a provider without checking that provider's own pace.
+  - The orchestrator spends the same quota: firstmate itself runs at medium effort, keeps turns and replies short, and never polls or re-reads needlessly.
+  - Check live quota before every dispatch, resume, or recovery relaunch - recovery is not an exception.
+  - Mistakes to never repeat: relaunching a whole fleet at frontier xhigh during recovery without checking quota first; launching many frontier xhigh workers at once without checking quota; judging capacity from the short window alone; pausing and relaunching workers repeatedly (churn); moving work to a provider without checking that provider's own pace.
 - Work end to end through the firstmate machinery (backlog, dispatch resolver, quota-axi, no-mistakes, supervision) rather than shortcuts.
 - Keep these preferences in dotfiles (`home/firstmate/data/captain.md`, linked into `~/firstmate/data/`) so they survive a fresh install; edit them there and commit.
