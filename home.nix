@@ -44,6 +44,14 @@ in
   '';
 
   programs.zoxide.enable = true;  # `z <dir>` jumps to frecent directories
+  # Commit identity for every repo; credentials stay out of this file.
+  programs.git = {
+    enable = true;
+    settings.user = {
+      name = "rvzaku";
+      email = "atharvmotghare07@gmail.com";
+    };
+  };
 
   programs.zsh = {
     enable = true;
