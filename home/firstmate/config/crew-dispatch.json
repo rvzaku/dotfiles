@@ -15,8 +15,11 @@
     },
     {
       "when": "The task is an adversarial code review or audit of an existing change.",
-      "use": { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" },
-      "why": "GPT 6 Sol is the strongest adversarial reviewer at volume."
+      "use": [
+        { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" },
+        { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" }
+      ],
+      "why": "GPT 6 Sol is the strongest adversarial reviewer at volume; Opus 5.5 takes the review when Codex quota is unavailable."
     },
     {
       "when": "The task is highly ambiguous or creative work that truly needs premium intelligence, or an escalation to untangle a mess such as crewmates disagreeing, a spiraling review loop, or a simple change that grew into a giant PR.",
