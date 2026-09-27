@@ -55,6 +55,7 @@
       "codex"
       "kunchenguid/tap/pi-launcher"
       "automic-vault/isotopes/automic-vault"  # secrets live in Keychain, never in this repo
+      "google-chrome"  # the browser chrome-devtools-axi drives
     ];
   };
 }
