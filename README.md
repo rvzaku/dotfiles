@@ -47,6 +47,10 @@ This fork is a small overlay on [kunchenguid/dotfiles](https://github.com/kunche
 FirstMate's model routing lives in `home/firstmate/config/crew-dispatch.json`, my routing, effort and quota-pacing preferences in `home/firstmate/data/captain.md`, and my product standard in `home/firstmate/docs/UNIVERSAL-STANDARDS.md`; all are linked into `~/firstmate`.
 To take Kun's changes: `git merge upstream/main` when you choose to.
 
+`av scan` flags `/opt/homebrew/bin`, `/opt/homebrew/sbin` and `~/.nix-profile/bin` coming before the system directories on `PATH`.
+That order is deliberate: it is how Homebrew and Nix tools replace the older macOS ones, and reversing it would break both.
+The mitigation is keeping secrets out of the shell environment with `av inject`; the bootstrap's closing steps clear the other findings (SSH GitHub login, `av harden gh`, `av harden codex`).
+
 ## Prerequisites
 
 - Apple Silicon Mac, by default.

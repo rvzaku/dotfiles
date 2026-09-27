@@ -93,11 +93,13 @@ echo "    npm prefix: $(npm prefix -g)"'
 cat <<'MSG'
 ==> Done. Use ./rebuild.sh for future config changes, topgrade for updates.
 
-These stay local on purpose; do them once per machine:
-  - gh auth login                      (GitHub CLI login)
-  - git config --global user.name/user.email, and an SSH key for your fork
+These stay local on purpose; do them once per machine, in this order:
+  - an SSH key for your fork, added to GitHub
+  - gh auth login -p ssh               (SSH, so no ambient git credential helper)
   - open Automic Vault (av open) and set up its approvals and secrets
   - sign in to claude, codex, and pi
+  - av harden gh && av harden codex    (move their tokens into the vault)
   - TYPESAFE_API_KEY for compact-adviser (/compact-adviser in Claude or Pi)
     and FirstMate dispatch (~/firstmate/.env); store it in Automic Vault, not here
+  - av scan                            (expect only the PATH-order findings; see README)
 MSG
