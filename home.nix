@@ -19,7 +19,7 @@ in
     # agent tooling runtimes; mutable npm globals live in ~/.local/npm, never the store
     bun
     nodejs
-    gh
+    # gh comes from Automic Vault's signed build in configuration.nix, so `av harden gh` has a target
     topgrade  # the one updater; config in home/.config/topgrade.toml
     tmux      # FirstMate's default agent backend outside herdr
     uv        # Python runner the summarize and uv agent skills rely on

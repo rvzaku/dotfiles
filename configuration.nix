@@ -48,6 +48,7 @@
     ];
     brews = [
       "herdr"
+      "automic-vault/isotopes/gh-cli"  # signed GitHub CLI that `av harden gh` wraps
     ];
     casks = [
       "wezterm"
