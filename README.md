@@ -59,12 +59,12 @@ The mitigation is keeping secrets out of the shell environment with `av inject`;
 
 ## Fresh-machine setup
 
-On a brand new Mac, from a bare clone of this repo:
+On a brand new Mac, the only thing to do first is add the Mac's SSH key to GitHub.
+The first `git` call offers to install Apple's Command Line Tools; accept it.
 
 ```sh
-git clone https://github.com/rvzaku/dotfiles.git ~/dotfiles
+git clone git@github.com:rvzaku/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-git remote set-url --push origin git@github.com:rvzaku/dotfiles.git  # once an SSH key is set up
 ```
 
 Before you run it: review "Make it yours" below.
@@ -84,7 +84,8 @@ Change the host label or CPU architecture if needed, and read the Homebrew clean
 4. Runs the first `darwin-rebuild switch`.
    It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
    Before this, it clones FirstMate to `~/firstmate` if missing, because Home Manager links FirstMate's routing config into it.
-5. Runs `agent-tools-sync`, then `fetch-upstreams`, then checks the result from a fresh login shell and lists the remaining local-only steps.
+5. Runs `agent-tools-sync`, then `fetch-upstreams`, then checks the result from a fresh login shell.
+6. Signs you in to GitHub over SSH when run from a terminal, then lists the remaining local-only steps (Automic Vault, agent sign-ins, hardening).
 
 After that, `darwin-rebuild` exists and you're on the normal workflow below.
 

@@ -90,12 +90,18 @@ echo "==> Step 7: verify from a fresh login shell"
 done
 echo "    npm prefix: $(npm prefix -g)"'
 
+echo "==> Step 8: GitHub login over SSH (interactive, skipped when already signed in)"
+# SSH (not HTTPS) so git gets no ambient credential helper; the key itself is already on GitHub.
+if [ -t 0 ]; then
+  /bin/zsh -lic 'gh auth status >/dev/null 2>&1 || gh auth login -h github.com -p ssh -w --skip-ssh-key'
+else
+  echo "    not a terminal; run: gh auth login -h github.com -p ssh -w --skip-ssh-key"
+fi
+
 cat <<'MSG'
 ==> Done. Use ./rebuild.sh for future config changes, topgrade for updates.
 
 These stay local on purpose; do them once per machine, in this order:
-  - an SSH key for your fork, added to GitHub
-  - gh auth login -p ssh               (SSH, so no ambient git credential helper)
   - open Automic Vault (av open) and set up its approvals and secrets
   - sign in to claude, codex, and pi
   - av harden gh && av harden codex    (move their tokens into the vault)
