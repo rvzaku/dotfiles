@@ -76,6 +76,12 @@ sudo "$NIX_BIN" run github:nix-darwin/nix-darwin/nix-darwin-26.05#darwin-rebuild
 # If this still fails with "nix: command not found", open a new terminal
 # (Determinate adds nix to new shells' PATH) and re-run ./bootstrap.sh.
 
+echo "==> Step 4b: first Chrome launch"
+# A freshly installed Chrome crashes headless until it has been opened once, and chrome-devtools-axi drives it headless.
+if [ -d "/Applications/Google Chrome.app" ]; then
+  open -gj -a "Google Chrome" && sleep 5 && osascript -e 'quit app "Google Chrome"' || true
+fi
+
 echo "==> Step 5: agent tools and skills"
 # The helpers put the new user-local and Nix bins on PATH themselves,
 # so they work in this shell before any new login.
