@@ -29,3 +29,6 @@ mitsuhiko/agent-stuff	sentry
 mitsuhiko/agent-stuff	ghidra
 mitsuhiko/agent-stuff	openscad
 mitsuhiko/agent-stuff	audio-transcription
+
+# Frontend design language, critique/audit/polish commands and anti-slop detectors (Apache-2.0).
+pbakaus/impeccable	impeccable
