@@ -1,4 +1,4 @@
-{ config, pkgs, user, ... }:
+{ config, lib, pkgs, user, ... }:
 
 let
   dotfiles = "${config.home.homeDirectory}/.dotfiles";
@@ -129,9 +129,17 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/config/crew-dispatch.json";
   home.file."firstmate/docs/UNIVERSAL-STANDARDS.md".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/docs/UNIVERSAL-STANDARDS.md";
-  # My routing, effort, and quota-pacing preferences; force replaces the hand-made link from before this was managed.
-  home.file."firstmate/data/captain.md" = {
-    source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/data/captain.md";
-    force = true;
-  };
+  # My routing, effort, and quota-pacing preferences.
+  # FirstMate's memory-budget check refuses a symlinked memory file, so this is a
+  # regular-file copy kept in two-way sync with this repo: the newer side wins.
+  home.activation.firstmateCaptainMd = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    src="${dotfiles}/home/firstmate/data/captain.md"
+    dst="$HOME/firstmate/data/captain.md"
+    if [ -L "$dst" ]; then run rm -f "$dst"; fi
+    if [ -f "$dst" ] && [ "$dst" -nt "$src" ] && ! cmp -s "$src" "$dst"; then
+      run cp "$dst" "$src"
+    elif ! cmp -s "$src" "$dst" 2>/dev/null; then
+      run install -m 0644 "$src" "$dst"
+    fi
+  '';
 }
