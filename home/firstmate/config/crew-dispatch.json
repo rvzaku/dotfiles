@@ -11,7 +11,7 @@
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" },
         { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" }
       ],
-      "why": "Planners: Opus 5.5 has the best return for planning and GPT 6 Sol is the strongest alternative; xhigh because the work is not well defined yet, and live quota picks whichever account has room."
+      "why": "Planners: Opus 5.5 leads because only the frontier tier asks what the real goal is instead of how to get it done (x.com/kunchenguid/status/2104749177456722354). GPT 6 Sol stays as the quota-driven stand-in: it is now roughly a Sonnet-equivalent implementer tier (x.com/kunchenguid/status/2104657437777408400), so it takes planning when Claude's window is exhausted rather than as an equal planner. xhigh because the work is not well defined yet."
     },
     {
       "when": "The task is an adversarial code review or audit of an existing change.",
@@ -33,7 +33,8 @@
     }
   ],
   "default": [
-    { "harness": "claude", "model": "claude-opus-5-5", "effort": "medium" },
+    { "harness": "claude", "model": "sonnet", "effort": "medium" },
     { "harness": "codex", "model": "gpt-6-sol", "effort": "medium" }
-  ]
+  ],
+  "why": "Implementers: well-defined work goes to the fast, capable implementer tier rather than the frontier planner. Claude Sonnet 5.5 leads (faster, cheaper, and smart enough to follow a plan) and GPT 6 Sol is its equal in this tier, so live quota picks whichever account has room (x.com/kunchenguid/status/2104749177456722354, x.com/kunchenguid/status/2104657437777408400)."
 }
