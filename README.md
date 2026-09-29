@@ -44,7 +44,7 @@ This fork is a small overlay on [kunchenguid/dotfiles](https://github.com/kunche
 | `topgrade` | Updates everything already installed, then runs `fetch-upstreams` |
 
 `bootstrap.sh` runs all of them in order on a fresh Mac and ends with the steps that stay local on purpose: `gh auth login`, git identity and SSH key, Automic Vault setup, agent logins, and `TYPESAFE_API_KEY` (in `~/firstmate/.env` or Automic Vault, never in this repo).
-FirstMate's model routing lives in `home/firstmate/config/crew-dispatch.json`, my routing, effort and quota-pacing preferences in `home/firstmate/data/captain.md`, and my product standard in `home/firstmate/docs/UNIVERSAL-STANDARDS.md`; all are linked into `~/firstmate`.
+FirstMate's model routing lives in `home/firstmate/config/crew-dispatch.json`, which is linked into `~/firstmate/config/`. My preference seed is `home/firstmate/data/captain.md`, kept in two-way sync with the live regular file at `~/firstmate/data/captain.md` by Home Manager (the newer side wins). `home/firstmate/docs/UNIVERSAL-STANDARDS.md` is linked into `~/firstmate/docs/` as a pointer to the [canonical universal-standards skill repository](https://github.com/rvzaku/universal-standards), which owns G1-G40.
 To take Kun's changes: `git merge upstream/main` when you choose to.
 
 `av scan` flags `/opt/homebrew/bin`, `/opt/homebrew/sbin` and `~/.nix-profile/bin` coming before the system directories on `PATH`.
