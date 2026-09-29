@@ -130,15 +130,22 @@ in
   home.file."firstmate/docs/UNIVERSAL-STANDARDS.md".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/docs/UNIVERSAL-STANDARDS.md";
   # My routing, effort, and quota-pacing preferences.
-  # FirstMate's memory-budget check refuses a symlinked memory file, so this is a
-  # regular-file copy kept in two-way sync with this repo: the newer side wins.
+  # FirstMate's memory-budget check refuses a symlinked memory file, so install a
+  # regular-file copy. Divergent copies need manual reconciliation.
   home.activation.firstmateCaptainMd = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     src="${dotfiles}/home/firstmate/data/captain.md"
     dst="$HOME/firstmate/data/captain.md"
-    if [ -L "$dst" ]; then run rm -f "$dst"; fi
-    if [ -f "$dst" ] && [ "$dst" -nt "$src" ] && ! cmp -s "$src" "$dst"; then
-      run cp "$dst" "$src"
-    elif ! cmp -s "$src" "$dst" 2>/dev/null; then
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+      if [ ! -f "$dst" ] || [ -L "$dst" ]; then
+        printf 'warning: %s is not a regular file; reconcile it with %s manually\n' "$dst" "$src" >&2
+      elif src_hash=$(shasum -a 256 "$src") && dst_hash=$(shasum -a 256 "$dst"); then
+        if [ "''${src_hash%% *}" != "''${dst_hash%% *}" ]; then
+          printf 'warning: %s and %s differ; reconcile them manually\n' "$src" "$dst" >&2
+        fi
+      else
+        printf 'warning: could not compare %s and %s; reconcile them manually\n' "$src" "$dst" >&2
+      fi
+    else
       run install -m 0644 "$src" "$dst"
     fi
   '';
