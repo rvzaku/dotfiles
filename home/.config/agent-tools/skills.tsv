@@ -32,3 +32,6 @@ mitsuhiko/agent-stuff	audio-transcription
 
 # Frontend design language, critique/audit/polish commands and anti-slop detectors (Apache-2.0).
 pbakaus/impeccable	impeccable
+
+# Canonical product-agnostic universal standard (G1-G40 with Figma design rules); private repo.
+rvzaku/universal-standards	universal-standards
