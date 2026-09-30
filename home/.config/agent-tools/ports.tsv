@@ -1,0 +1,10 @@
+# local-skill<TAB>source-commit<TAB>upstream-path
+poteto-agent	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/agents/poteto-agent.md
+comment-sicko	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/agents/comment-sicko.md
+no-comments-unattended	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/skills/no-comments/SKILL.md
+no-comments-unattended	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/agents/comment-sicko.md
+benny-repro-fix	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/automations/benny/FOR_AGENTS.md
+benny-repro-fix	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/automations/benny/skills/triage-issue-reports/SKILL.md
+benny-repro-fix	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/automations/benny/skills/reproduce-and-fix-issues/SKILL.md
+benny-repro-fix	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/automations/benny/skills/reproduce-and-fix-issues/references/control-adapter.md
+benny-repro-fix	fae2c6ed95821bd85f614a73e4842e13229fa5e5	pstack/automations/benny/skills/reproduce-and-fix-issues/references/verify-existing-fix.md

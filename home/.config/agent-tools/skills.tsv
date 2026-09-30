@@ -36,51 +36,12 @@ pbakaus/impeccable	impeccable
 # Canonical product-agnostic universal standard (G1-G40 with Figma design rules); private repo.
 rvzaku/universal-standards	universal-standards
 
-# All 47 portable Agent Skills shipped by cursor/plugins/pstack. agent-tools-sync targets Claude Code, Codex, and Pi; Pi also discovers the shared ~/.agents/skills directory. Cursor-only agent definitions and automations are not Agent Skills.
-https://github.com/cursor/plugins/tree/main/pstack	architect
-https://github.com/cursor/plugins/tree/main/pstack	arena
-https://github.com/cursor/plugins/tree/main/pstack	automate-me
-https://github.com/cursor/plugins/tree/main/pstack	blast-radius
-https://github.com/cursor/plugins/tree/main/pstack	bro
-https://github.com/cursor/plugins/tree/main/pstack	create-verification-skill
-https://github.com/cursor/plugins/tree/main/pstack	figure-it-out
-https://github.com/cursor/plugins/tree/main/pstack	how
-https://github.com/cursor/plugins/tree/main/pstack	interrogate
-https://github.com/cursor/plugins/tree/main/pstack	maintain-verification-skill
-https://github.com/cursor/plugins/tree/main/pstack	make-bot-ui
-https://github.com/cursor/plugins/tree/main/pstack	no-comments
-https://github.com/cursor/plugins/tree/main/pstack	poteto-mode
-https://github.com/cursor/plugins/tree/main/pstack	principle-attack-the-premise
-https://github.com/cursor/plugins/tree/main/pstack	principle-boundary-discipline
-https://github.com/cursor/plugins/tree/main/pstack	principle-build-the-lever
-https://github.com/cursor/plugins/tree/main/pstack	principle-encode-lessons-in-structure
-https://github.com/cursor/plugins/tree/main/pstack	principle-exhaust-the-design-space
-https://github.com/cursor/plugins/tree/main/pstack	principle-experience-first
-https://github.com/cursor/plugins/tree/main/pstack	principle-fix-root-causes
-https://github.com/cursor/plugins/tree/main/pstack	principle-foundational-thinking
-https://github.com/cursor/plugins/tree/main/pstack	principle-guard-the-context-window
-https://github.com/cursor/plugins/tree/main/pstack	principle-laziness-protocol
-https://github.com/cursor/plugins/tree/main/pstack	principle-make-operations-idempotent
-https://github.com/cursor/plugins/tree/main/pstack	principle-migrate-callers-then-delete-legacy-apis
-https://github.com/cursor/plugins/tree/main/pstack	principle-minimize-reader-load
-https://github.com/cursor/plugins/tree/main/pstack	principle-model-the-domain
-https://github.com/cursor/plugins/tree/main/pstack	principle-never-block-on-the-human
-https://github.com/cursor/plugins/tree/main/pstack	principle-outcome-oriented-execution
-https://github.com/cursor/plugins/tree/main/pstack	principle-prove-it-works
-https://github.com/cursor/plugins/tree/main/pstack	principle-redesign-from-first-principles
-https://github.com/cursor/plugins/tree/main/pstack	principle-separate-before-serializing-shared-state
-https://github.com/cursor/plugins/tree/main/pstack	principle-sequence-verifiable-units
-https://github.com/cursor/plugins/tree/main/pstack	principle-subtract-before-you-add
-https://github.com/cursor/plugins/tree/main/pstack	principle-test-behavior-not-implementation
-https://github.com/cursor/plugins/tree/main/pstack	principle-type-system-discipline
-https://github.com/cursor/plugins/tree/main/pstack	recall
-https://github.com/cursor/plugins/tree/main/pstack	reflect
-https://github.com/cursor/plugins/tree/main/pstack	setup-pstack
-https://github.com/cursor/plugins/tree/main/pstack	show-me-your-work
-https://github.com/cursor/plugins/tree/main/pstack	swarm
-https://github.com/cursor/plugins/tree/main/pstack	tdd
-https://github.com/cursor/plugins/tree/main/pstack	teach
-https://github.com/cursor/plugins/tree/main/pstack	technical-writing
-https://github.com/cursor/plugins/tree/main/pstack	typescript-best-practices
-https://github.com/cursor/plugins/tree/main/pstack	unslop
-https://github.com/cursor/plugins/tree/main/pstack	why
+# The wildcard discovers every current and future portable pstack Agent Skill.
+# Cursor-only agents and automations need Cursor's runtime and are not installed here.
+https://github.com/cursor/plugins/tree/main/pstack	*
+
+# Local ports of pstack roles/workflows that are not Agent Skills upstream.
+https://github.com/rvzaku/dotfiles/tree/main/skills/no-comments-unattended	no-comments-unattended
+https://github.com/rvzaku/dotfiles/tree/main/skills/poteto-agent	poteto-agent
+https://github.com/rvzaku/dotfiles/tree/main/skills/comment-sicko	comment-sicko
+https://github.com/rvzaku/dotfiles/tree/main/skills/benny-repro-fix	benny-repro-fix
