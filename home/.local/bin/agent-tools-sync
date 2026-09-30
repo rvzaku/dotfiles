@@ -6,7 +6,8 @@
 #   npm-tools.txt  npm CLIs, installed user-locally into ~/.local/npm
 #   skills.tsv     global Agent Skills, installed through `npx skills`
 #   setup.tsv      other idempotent installs and hook setup, run only when not already done
-# Installs what is missing and never updates what is present; Topgrade owns updates.
+# Reconciles declared skills, including refreshing existing global Agent Skills.
+# Topgrade owns updates for the npm tools and other installed packages.
 # Every command in the loops reads /dev/null so it cannot consume the manifest being read.
 # Needs no root and no secrets, so it is safe to rerun and safe in a fresh bootstrap.
 
@@ -60,9 +61,21 @@ fi
 
 echo "==> global Agent Skills"
 if [[ -f "$SKILLS_MANIFEST" ]]; then
+  if command -v agent-tools-sync-pstack >/dev/null 2>&1; then
+    agent-tools-sync-pstack || fail "pstack source audit/reconciliation failed"
+  fi
+  skill_update_needed=0
   while IFS=$'\t' read -r repository skill || [[ -n "${repository:-}" ]]; do
     case "${repository:-}" in ""|\#*) continue ;; esac
     [[ -n "${skill:-}" ]] || die "missing skill name for repository: $repository"
+    skill_update_needed=1
+    if [[ "$skill" == "*" ]]; then
+      echo "    discover: $repository -> all skills"
+      npx --yes skills add "$repository" --skill '*' --global --yes \
+        --agent "${SKILL_AGENTS[@]}" </dev/null \
+        || fail "skill discovery/install failed: $repository"
+      continue
+    fi
     # `npx skills add -g` keeps the canonical copy here and links it into each agent.
     if [[ -f "$HOME/.agents/skills/$skill/SKILL.md" ]]; then
       echo "    present: $skill"
@@ -73,6 +86,11 @@ if [[ -f "$SKILLS_MANIFEST" ]]; then
         || fail "skill install failed: $repository -> $skill"
     fi
   done < "$SKILLS_MANIFEST"
+  if [[ "$skill_update_needed" -eq 1 ]]; then
+    echo "    refresh: all globally installed skills"
+    npx --yes skills update --global --yes </dev/null \
+      || fail "global skill refresh failed"
+  fi
 fi
 
 echo "==> other tools and hooks"

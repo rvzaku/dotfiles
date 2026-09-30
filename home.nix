@@ -122,6 +122,8 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/topgrade.toml";
   home.file.".local/bin/agent-tools-sync".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/agent-tools-sync";
+  home.file.".local/bin/agent-tools-sync-pstack".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/agent-tools-sync-pstack";
   home.file.".local/bin/fetch-upstreams".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.local/bin/fetch-upstreams";
   # FirstMate routing rules and my product standard; FirstMate's own repo is Kun's, so they live here.

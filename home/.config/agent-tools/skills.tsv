@@ -35,3 +35,13 @@ pbakaus/impeccable	impeccable
 
 # Canonical product-agnostic universal standard (G1-G40 with Figma design rules); private repo.
 rvzaku/universal-standards	universal-standards
+
+# The wildcard discovers every current and future portable pstack Agent Skill.
+# Cursor-only agents and automations need Cursor's runtime and are not installed here.
+https://github.com/cursor/plugins/tree/main/pstack	*
+
+# Local ports of pstack roles/workflows that are not Agent Skills upstream.
+https://github.com/rvzaku/dotfiles/tree/main/skills/no-comments-unattended	no-comments-unattended
+https://github.com/rvzaku/dotfiles/tree/main/skills/poteto-agent	poteto-agent
+https://github.com/rvzaku/dotfiles/tree/main/skills/comment-sicko	comment-sicko
+https://github.com/rvzaku/dotfiles/tree/main/skills/benny-repro-fix	benny-repro-fix
