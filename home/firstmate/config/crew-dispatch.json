@@ -12,34 +12,34 @@
       "when": "The task is planning a new feature, writing a spec, or investigating a complex or not yet understood bug.",
       "use": [
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" },
-        { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" }
+        { "harness": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" }
       ],
-      "why": "Planners: Kun's bucket 3 is Opus 5.5 almost exclusively, because only the frontier tier asks what the real goal is instead of how to get it done; Sonnet 5.5 is explicitly not an equal planner (x.com/kunchenguid/status/2104749177456722354). GPT 6 Sol is now roughly Sonnet-equivalent (x.com/kunchenguid/status/2104657437777408400), so it takes planning when Claude's window is exhausted rather than as an equal planner. xhigh because the work is not well defined yet."
+      "why": "Planners: Kun's bucket 3 is Opus 5.5 almost exclusively, because only the frontier tier asks what the real goal is instead of how to get it done; Sonnet 5.5 is explicitly not an equal planner (x.com/kunchenguid/status/2104749177456722354). GPT 6.1 Sol replaces GPT 6 Sol (Kun's OpenAI DevDay post, x.com/kunchenguid/status/2104998134279762141; its biggest change is cheaper cached tokens, which cuts the cost of long-horizon work a lot); GPT 6 Sol was roughly Sonnet-equivalent (x.com/kunchenguid/status/2104657437777408400), and Kun wants to try 6.1 Sol before judging the size of the jump, so it takes planning when Claude's window is exhausted rather than as an equal planner. Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars. xhigh because the work is not well defined yet."
     },
     {
       "when": "The task is an adversarial code review or audit of an existing change.",
       "use": [
-        { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" },
+        { "harness": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" },
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" }
       ],
-      "why": "Kun's bucket 4: Sol is the best adversarial code reviewer he has run, and he skips Astra here only because it is too expensive at review volume (x.com/kunchenguid/status/2103277022235766963). Opus 5.5 takes the review when Codex quota is unavailable."
+      "why": "GPT 6.1 Sol replaces GPT 6 Sol here (x.com/kunchenguid/status/2104998134279762141; cheaper cached tokens lower the cost of long-horizon work). Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars. Kun's bucket 4: Sol is the best adversarial code reviewer he has run, and he skips Astra here only because it is too expensive at review volume (x.com/kunchenguid/status/2103277022235766963). Opus 5.5 takes the review when Codex quota is unavailable."
     },
     {
       "when": "The task is highly ambiguous or creative work that truly needs premium intelligence, or an escalation to untangle a mess such as crewmates disagreeing, a spiraling review loop, or a simple change that grew into a giant PR.",
       "approval": "captain",
       "use": [
-        { "harness": "claude", "model": "claude-fable-5-1", "effort": "xhigh" },
-        { "harness": "codex", "model": "gpt-6-astra", "effort": "xhigh" },
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" },
-        { "harness": "codex", "model": "gpt-6-sol", "effort": "xhigh" }
+        { "harness": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" },
+        { "harness": "claude", "model": "claude-fable-5-1", "effort": "xhigh" },
+        { "harness": "codex", "model": "gpt-6-astra", "effort": "xhigh" }
       ],
-      "why": "Premium intelligence and escalation untangling (Kun's bucket 2). Premium is expensive, so it runs only when the extra judgment is worth the cost; Opus 5.5 stands in when Fable quota is tight. Captain 2026-09-29: Astra runs alongside Opus and Sol here, and Sol covers the case where both premium accounts are tight."
+      "why": "Premium intelligence and escalation untangling (Kun's bucket 2). GPT 6.1 Sol replaces GPT 6 Sol (x.com/kunchenguid/status/2104998134279762141). Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars, GPT 6 Astra about 57.5 percent at roughly 8.8 dollars, Claude Fable 5.1 about 57 percent at roughly 18 dollars, Opus 5 about 52 percent at roughly 18 dollars. The chart shows Fable 5.1 and Astra scoring below Opus 5.5 and GPT 6.1 Sol at several times the cost, so they are reserved for judgment work the benchmark does not measure and never chosen for cost or score. Opus 5.5 and GPT 6.1 Sol lead the order; Fable and Astra follow. Kun doubts the return on Astra's ultrafast mode (8x speed at 6x price), so no rule uses it. Captain 2026-09-29: Astra runs alongside Opus and Sol here; captain 2026-09-30: Sol is now 6.1."
     }
   ],
   "default": [
     { "harness": "claude", "model": "sonnet", "effort": "medium" },
-    { "harness": "codex", "model": "gpt-6-sol", "effort": "medium" },
+    { "harness": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
     { "harness": "claude", "model": "claude-opus-5-5", "effort": "medium" }
   ],
-  "why": "Implementers (Kun's bucket 4): well-defined work goes to an efficient workhorse, not the frontier planner. Claude Sonnet 5.5 leads because it is fast, cheap, and smart enough to follow a plan (x.com/kunchenguid/status/2104749177456722354); GPT 6 Sol is its equal in this tier (x.com/kunchenguid/status/2104657437777408400) and stays a first-class lane; Opus 5.5 spans almost every bucket and takes the lane when both are tight. Live quota picks whichever account has room."
+  "why": "Implementers (Kun's bucket 4): well-defined work goes to an efficient workhorse, not the frontier planner. Claude Sonnet 5.5 leads because it is fast, cheap, and smart enough to follow a plan (x.com/kunchenguid/status/2104749177456722354); GPT 6.1 Sol replaces GPT 6 Sol, which was its equal in this tier (x.com/kunchenguid/status/2104657437777408400), and stays a first-class lane (Kun's OpenAI DevDay post, x.com/kunchenguid/status/2104998134279762141; cheaper cached tokens lower long-horizon cost; Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars); Opus 5.5 spans almost every bucket and takes the lane when both are tight. Live quota picks whichever account has room."
 }
