@@ -1,31 +1,64 @@
 {
   "rules": [
     {
-      "when": "The task is a trivial change whose edit is already fully defined, such as a one-line fix, a config value change, or a rote rename.",
+      "when": "The request is an extremely small, bounded, fully specified change such as a config value, rename, or similarly small fix; it is off the critical path and end-to-end latency does not matter.",
       "use": [
         { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" },
         { "harness": "claude", "model": "sonnet", "effort": "medium" }
       ],
-      "why": "Trivial fixers: the change is already specified, so the cheapest fast model is enough. Luna leads; Sonnet stands in when Codex quota is tight, and Haiku 5.5 replaces Sonnet here once Anthropic ships it (x.com/kunchenguid/status/2104749177456722354). Captain 2026-09-29: Luna paired with Sonnet."
+      "why": "Kun says Luna is cheap but slow in turns, so reserve it for background work and keep Sonnet as fallback (x.com/kunchenguid/status/2103325882752598078; x.com/kunchenguid/status/2102787931178176588)."
     },
     {
-      "when": "The task is planning a new feature, writing a spec, or investigating a complex or not yet understood bug.",
+      "when": "The request is a documentation or internal tooling change with a clear description and bounded outcome.",
+      "use": [
+        { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" },
+        { "harness": "claude", "model": "sonnet", "effort": "medium" }
+      ],
+      "why": "Kun's bucket guidance routes routine, bounded work economically, with Luna for background tasks and Sonnet as fallback (x.com/kunchenguid/status/2103277022235766963; x.com/kunchenguid/status/2102787931178176588)."
+    },
+    {
+      "when": "The request is to implement a defined feature or slice from a written spec or contract, especially on the critical path where end-to-end speed matters.",
+      "use": [
+        { "harness": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
+        { "harness": "claude", "model": "sonnet", "effort": "medium" },
+        { "harness": "claude", "model": "claude-opus-5-5", "effort": "medium" }
+      ],
+      "why": "Kun recommends routing per task and using Sonnet for implementation, while GPT 6.1 Sol is the current Codex workhorse (x.com/kunchenguid/status/2103895901140042044; x.com/kunchenguid/status/2104749177456722354; x.com/kunchenguid/status/2104998134279762141)."
+    },
+    {
+      "when": "The request is taste-heavy visual or UX polish of an existing design, with the core product direction already established.",
+      "use": [
+        { "harness": "claude", "model": "sonnet", "effort": "high" },
+        { "harness": "codex", "model": "gpt-6.1-sol", "effort": "high" }
+      ],
+      "why": "Kun assigns design and taste work to Sonnet, with GPT 6.1 Sol as the alternate task-specific route (x.com/kunchenguid/status/2103895901140042044; x.com/kunchenguid/status/2104749177456722354; x.com/kunchenguid/status/2104998134279762141)."
+    },
+    {
+      "when": "The request is to plan a feature, write a contract or spec for an unsettled slice, or investigate a complex or not yet understood problem.",
       "use": [
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" },
         { "harness": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" }
       ],
-      "why": "Planners: Kun's bucket 3 is Opus 5.5 almost exclusively, because only the frontier tier asks what the real goal is instead of how to get it done; Sonnet 5.5 is explicitly not an equal planner (x.com/kunchenguid/status/2104749177456722354). GPT 6.1 Sol replaces GPT 6 Sol (Kun's OpenAI DevDay post, x.com/kunchenguid/status/2104998134279762141; its biggest change is cheaper cached tokens, which cuts the cost of long-horizon work a lot); GPT 6 Sol was roughly Sonnet-equivalent (x.com/kunchenguid/status/2104657437777408400), and Kun wants to try 6.1 Sol before judging the size of the jump, so it takes planning when Claude's window is exhausted rather than as an equal planner. Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars. xhigh because the work is not well defined yet."
+      "why": "Kun reserves Opus for planning and unsettled problems, sets effort as a ceiling, and names GPT 6.1 Sol as the alternate frontier route (x.com/kunchenguid/status/2104749177456722354; x.com/kunchenguid/status/2103325882752598078; x.com/kunchenguid/status/2104998134279762141)."
     },
     {
-      "when": "The task is an adversarial code review or audit of an existing change.",
+      "when": "The request is bounded, checkable research such as verifying a licence or source, or looking up a dataset, with a concrete question and verifiable result.",
       "use": [
         { "harness": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" },
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" }
       ],
-      "why": "GPT 6.1 Sol replaces GPT 6 Sol here (x.com/kunchenguid/status/2104998134279762141; cheaper cached tokens lower the cost of long-horizon work). Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars. Kun's bucket 4: Sol is the best adversarial code reviewer he has run, and he skips Astra here only because it is too expensive at review volume (x.com/kunchenguid/status/2103277022235766963). Opus 5.5 takes the review when Codex quota is unavailable."
+      "why": "Kun recommends assigning each task to its fitting bucket and GPT 6.1 Sol is the current Codex choice, with Opus as the alternate (x.com/kunchenguid/status/2103277022235766963; x.com/kunchenguid/status/2103895901140042044; x.com/kunchenguid/status/2104998134279762141)."
     },
     {
-      "when": "The task is highly ambiguous or creative work that truly needs premium intelligence, or an escalation to untangle a mess such as crewmates disagreeing, a spiraling review loop, or a simple change that grew into a giant PR.",
+      "when": "The request is an adversarial review of an existing change, looking for defects, unsafe assumptions, or missed edge cases.",
+      "use": [
+        { "harness": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" },
+        { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" }
+      ],
+      "why": "Kun identifies Sol as his strongest adversarial reviewer and recommends Opus as the alternate when Sol is unavailable (x.com/kunchenguid/status/2103277022235766963; x.com/kunchenguid/status/2104998134279762141)."
+    },
+    {
+      "when": "The request is unusually ambiguous or creative and needs premium judgment, or an escalation to resolve a serious disagreement, spiraling review, or unexpectedly large change.",
       "approval": "captain",
       "use": [
         { "harness": "claude", "model": "claude-opus-5-5", "effort": "xhigh" },
@@ -33,7 +66,7 @@
         { "harness": "claude", "model": "claude-fable-5-1", "effort": "xhigh" },
         { "harness": "codex", "model": "gpt-6-astra", "effort": "xhigh" }
       ],
-      "why": "Premium intelligence and escalation untangling (Kun's bucket 2). GPT 6.1 Sol replaces GPT 6 Sol (x.com/kunchenguid/status/2104998134279762141). Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars, GPT 6 Astra about 57.5 percent at roughly 8.8 dollars, Claude Fable 5.1 about 57 percent at roughly 18 dollars, Opus 5 about 52 percent at roughly 18 dollars. The chart shows Fable 5.1 and Astra scoring below Opus 5.5 and GPT 6.1 Sol at several times the cost, so they are reserved for judgment work the benchmark does not measure and never chosen for cost or score. Opus 5.5 and GPT 6.1 Sol lead the order; Fable and Astra follow. Kun doubts the return on Astra's ultrafast mode (8x speed at 6x price), so no rule uses it. Captain 2026-09-29: Astra runs alongside Opus and Sol here; captain 2026-09-30: Sol is now 6.1."
+      "why": "Kun reserves this bucket for premium judgment and escalation, while keeping Opus and GPT 6.1 Sol ahead of Fable and Astra and avoiding ultrafast mode (x.com/kunchenguid/status/2103277022235766963; x.com/kunchenguid/status/2105037902224785454; x.com/kunchenguid/status/2104998134279762141)."
     }
   ],
   "default": [
@@ -41,5 +74,5 @@
     { "harness": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
     { "harness": "claude", "model": "claude-opus-5-5", "effort": "medium" }
   ],
-  "why": "Implementers (Kun's bucket 4): well-defined work goes to an efficient workhorse, not the frontier planner. Claude Sonnet 5.5 leads because it is fast, cheap, and smart enough to follow a plan (x.com/kunchenguid/status/2104749177456722354); GPT 6.1 Sol replaces GPT 6 Sol, which was its equal in this tier (x.com/kunchenguid/status/2104657437777408400), and stays a first-class lane (Kun's OpenAI DevDay post, x.com/kunchenguid/status/2104998134279762141; cheaper cached tokens lower long-horizon cost; Terminal-Bench 4.0 score-versus-cost-per-task chart, approximate readings: GPT 6.1 Sol about 62 percent at roughly 1.5 dollars per task, Opus 5.5 about 59 percent at roughly 13 dollars); Opus 5.5 spans almost every bucket and takes the lane when both are tight. Live quota picks whichever account has room."
+  "why": "The default is a defined implementation: Kun recommends Sonnet for implementation and GPT 6.1 Sol as a task-specific workhorse, with Opus as the remaining fallback (x.com/kunchenguid/status/2104749177456722354; x.com/kunchenguid/status/2103895901140042044; x.com/kunchenguid/status/2104998134279762141)."
 }
