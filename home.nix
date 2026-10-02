@@ -131,6 +131,8 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/config/crew-dispatch.json";
   home.file."firstmate/docs/UNIVERSAL-STANDARDS.md".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/docs/UNIVERSAL-STANDARDS.md";
+  home.file."firstmate/docs/WORKFLOW-SOURCES.md".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/firstmate/docs/WORKFLOW-SOURCES.md";
   # My routing, effort, and quota-pacing preferences.
   # FirstMate's memory-budget check refuses a symlinked memory file, so install a
   # regular-file copy. Divergent copies need manual reconciliation.
