@@ -37,17 +37,17 @@ An owner is the current place for the practice. A gap names the tracked backlog 
 
 | Practice | Firstmate owner or gap |
 | --- | --- |
-| Product-local verification skill and feature map | The product repository owns the CLI and map. Shared intake discovery is a gap; no shared backlog ID is recorded in this alignment. |
+| Product-local verification skill and feature map | The product repository owns the CLI and map. Shared intake discovery gap: `fm-align-intake-effort`. |
 | Prevent repeated mistakes by design, then static checks, rules or skills, and style text last | `home/firstmate/data/captain.md` records the trust order. Existing guards and project-local checks enforce it. |
-| Route work by context and reasoning needs | `config/crew-dispatch.json` and `bin/fm-dispatch-resolve.sh`; current preferences stay in private configuration. |
+| Route work by context and reasoning needs | `config/crew-dispatch.json` and `bin/fm-dispatch-resolve.sh`; current preferences stay in private configuration. Medium effort fallback for defined work is a gap: `fm-align-intake-effort`. |
 | Keep skills small, triggered, and composable | `.agents/skills/` descriptions and `.agents/skills/firstmate-coding-guidelines/SKILL.md`. |
-| Define observable success and use the real feedback loop | `bin/fm-brief.sh` and `bin/fm-dod-lib.sh`; the validation path owns execution. |
+| Define observable success and use the real feedback loop | `bin/fm-brief.sh` and `bin/fm-dod-lib.sh`; worker-brief criteria and verification entry-point gap: `fm-nav-brief-inbox`. |
 | Reproduce a bug before diagnosing its cause | `.agents/skills/diagnostic-reasoning/SKILL.md`. |
 | Use small interfaces and test behavior through them | `.agents/skills/firstmate-coding-guidelines/SKILL.md`. |
 | Keep work in complete, verifiable slices with explicit blockers | `AGENTS.md` decomposition guidance and the existing backlog dependency model. |
-| Maintain isolated work, compact tool output, and validation gates | `AGENTS.md`, `bin/fm-spawn.sh`, and the selected delivery path. |
-| Propose memory changes from corroborated evidence and validate separately | Gap: `fm-backpass-memory`. Human preferences remain protected. |
-| Remove workarounds and maintain a preferred pattern | Gap: `fm-gardener-backpass`. |
+| Maintain isolated work, compact tool output, and validation gates | `AGENTS.md`, `bin/fm-spawn.sh`, and the selected delivery path. Compaction advice review gap: `fm-align-maintenance-loop`. |
+| Propose memory changes from corroborated evidence and validate separately | Gap: `fm-align-maintenance-loop` and `fm-backpass-memory`. Human preferences remain protected. |
+| Remove workarounds and maintain a preferred pattern | Gap: `fm-gardener-backpass`; correction-to-check handoff gap: `fm-nav-brief-inbox`. |
 | Use measured baselines and bounded experiment records | The task specification and selected validation owner; apply only to authorized experiment work. |
 
 ## Trust order
