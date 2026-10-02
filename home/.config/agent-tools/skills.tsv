@@ -30,6 +30,9 @@ mitsuhiko/agent-stuff	ghidra
 mitsuhiko/agent-stuff	openscad
 mitsuhiko/agent-stuff	audio-transcription
 
+# Simplified Technical English rewriting skill and structural linter (MIT); skill name asd-ste100.
+danyuchn/asd-ste100-skill	asd-ste100
+
 # Frontend design language, critique/audit/polish commands and anti-slop detectors (Apache-2.0).
 pbakaus/impeccable	impeccable
 

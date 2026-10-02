@@ -14,6 +14,13 @@
   If you see one, even if it is not caused by what you are working on right now, still get it fixed.
 - Before using "dynamic workflows", "ultra code" or any harness feature that immediately spawns a large swarm of subagents, always explain the tradeoffs and ask the user for explicit approval.
 
+## Writing style
+
+- In chat replies, reports, PR text and docs, write in about 80% ASD-STE100 (the `asd-ste100` skill, STE-flavored mode): one idea per sentence, at most 25 words, no semicolons, active voice, one name per thing, and plain verbs instead of "perform an analysis of".
+  Keep hedges ("may", "probably") at their original strength. Keep the present perfect when it states current status.
+  Code, standards text, legal text and product copy keep their own voice. These rules never override the dash rule above or any address or format rules a project sets.
+- When it helps the reader, prefer a diagram, a table or an HTML page (lavish) over dense prose. Make a video explainer only when asked.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
