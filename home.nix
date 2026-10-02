@@ -51,6 +51,7 @@ in
       name = "rvzaku";
       email = "atharvmotghare07@gmail.com";
     };
+    settings.credential."https://github.com".helper = [ "" "!gh auth git-credential" ];
   };
 
   programs.zsh = {
