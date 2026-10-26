@@ -1,158 +1,197 @@
 # dotfiles
 
-An Apple Silicon Mac engineering environment adapted from
-[Kun Chen's upstream dotfiles](https://github.com/kunchenguid/dotfiles).
-The upstream Nix/nix-darwin/Home Manager/Homebrew structure, editor, terminal,
-Rosé Pine Moon aesthetic and **Homebrew `zap` policy** are retained.
-Upstream walkthrough: https://youtu.be/5N-okeDdIuI
+<p align="center">
+  <a href="https://discord.gg/Wsy2NpnZDu"
+    ><img
+      alt="Discord"
+      src="https://img.shields.io/discord/1439901831038763092?style=flat-square&label=discord"
+  /></a>
+</p>
 
-This fork is for `rvzaku`. It is a local adaptation, not a contribution to Kun's
-personal setup; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Watch the walkthrough: https://youtu.be/5N-okeDdIuI
 
-## Start here
+My personal Mac setup, managed with nix-darwin and home-manager.
+One repo, one command, and a fresh Mac ends up configured the same way every time.
 
-| Want to… | Edit/run |
-|---|---|
-| Change username, hostname or architecture | `machine.nix` (the only machine identity file) |
-| Add/remove a GUI app or Homebrew-only CLI | `configuration.nix`: `casks` / `brews` |
-| Add/remove a Nix CLI or runtime | `home.nix`: `home.packages` |
-| Change an exact release/AXI pin | `packages/default.nix` / `packages/axi/package.json` + lock |
-| Change shell, Git/SSH safety or a config link | `home.nix` |
-| Change terminal/editor/Pi preferences | authored files under `home/` |
-| Build without applying | `./bootstrap.sh` (identity preflight + locked build) or `./rebuild.sh` |
-| See what `zap` would remove | `./scripts/zap-report.sh /absolute/path/outside/checkout` |
-| Prepare an update | `tg`, or `topgrade --config ./home/.config/topgrade.toml` after migration |
-| Verify an approved activation | `./scripts/verify-mac.sh` in a fresh shell |
-| Add/evaluate a skill | [skills/README.md](skills/README.md), one skill at a time |
+## Contributing / Using This Repo
 
-**No repository script performs activation.** `bootstrap.sh` and `rebuild.sh`
-build only; neither replaces `~/.dotfiles`, installs Nix, rewrites identity,
-runs `sudo`, or switches a system. An attended approver applies a reviewed,
-built candidate only after examining the actual cleanup diff.
+These are my personal dotfiles, shared publicly so people can read them, learn from them, and fork them freely.
+Feature requests and pull requests are not accepted here, and PRs are auto-closed.
+If you find a bug, please open a GitHub Issue using the bug report template.
 
-See [Mac operations, ownership, migration and rollback](docs/mac-foundation.md)
-for the precise commands, installed inventory, pin policy and known limits.
+## What you get
 
-## Fresh supported Mac
+Running the switch builds:
 
-1. Install Apple's Command Line Tools and a reviewed Determinate Nix installer
-   from https://determinate.systems/nix/. The Nix daemon is owned by Determinate;
-   nix-darwin deliberately has `nix.enable = false`.
-2. Clone this fork into **`~/dotfiles`**, review `machine.nix`, and set its user,
-   `scutil --get LocalHostName` value and supported CPU. Only arm64 release
-   artifacts are packaged here; Intel needs new audited package hashes too.
-3. Run `./bootstrap.sh`. It uses the **locked** nix-darwin rebuild tool, so it
-   also works when `darwin-rebuild` has not yet been installed.
-4. Capture installed Homebrew formulae, leaves, casks, taps and apps and run the
-   zap report. Declare every item to retain. Review the migration and approval
-   checklist before creating `~/.dotfiles -> ~/dotfiles` and activating.
-5. Provision scoped credentials with `kc set NAME` in a real terminal. Verify
-   with `kc run NAME=ENV -- COMMAND`; never paste a secret into a command line,
-   Nix expression, skill, environment file or Git. No existing agent state or
-   product code is imported by bootstrap.
+- System settings (dark mode, key repeat, dock, Finder, trackpad)
+- Homebrew apps (casks and CLI tools)
+- Nix user packages (ripgrep, fd, fzf, jq, lazygit, Neovim, Hack Nerd Font)
+- Shell (zsh, aliases, starship prompt)
+- Editor (Neovim config with the rose-pine moon theme)
+- Terminal (WezTerm config with the rose-pine moon theme and dimmed unfocused windows)
+- Agent configs (Claude, Codex, opencode all share one AGENTS.md)
+- Pi theme and local extensions, generic UI settings and model overrides (fork compatibility notes below)
 
-**Homebrew cleanup warning:** `configuration.nix` intentionally sets
-`homebrew.onActivation.cleanup = "zap"`. An approved switch removes undeclared
-formulae/casks and may delete their associated application data. Review the exact
-`brew bundle cleanup` preview before **every** switch. An old report or a successful
-build is not approval. macOS-owned and unmanaged apps are listed separately;
-Homebrew cleanup does not inventory arbitrary app data.
+## Prerequisites
 
-## Daily changes and updates
+- Apple Silicon Mac, by default.
+- Intel Mac: set `system = "x86_64-darwin";` in `machine.nix`.
+  This fork's release-binary packages also need audited Intel artifacts/hashes; changing the system alone is not sufficient.
 
-Make a declaration change, then `./bootstrap.sh`, run the repo tests, and capture
-a fresh zap report. Removing an app means deleting its declaration and reading
-that preview, including its zap/data implications; do not run an ad-hoc uninstall.
-Nix removal affects the next generation; old store generations remain available
-until a separately authorized garbage collection.
+## Fresh-machine setup
 
-Topgrade has one custom step: clean-tree preflight, backup the prior lock/head,
-update `flake.lock`, check, build, and report cleanup. It **does not activate**,
-upgrade npm globals, self-update uv/Pi/agents, pull a skill collection or prune
-old generations. It prepares a reviewable candidate rather than competing with
-package ownership. See the operations guide for recovery after a failed update.
-
-## Repo tour and ownership
-
-- `flake.nix` / `flake.lock`: upstream input graph and immutable source revisions,
-  including Homebrew core/cask and Kun's tap.
-- `machine.nix`: local identity; upstream's logical flake host label remains `mac`.
-- `configuration.nix`: system defaults, nix-homebrew, brew declarations.
-- `home.nix`: Nix user packages, shell/Git/SSH defaults and selective authored links.
-- `packages/`: hashed release binaries and a transitive integrity-locked AXI closure.
-- `home/`: editable config files linked through `~/.dotfiles`, not runtime state.
-- `scripts/`: small build/update/preview/verification/Keychain boundaries.
-- `skills/`: opt-in portable local skill and reviewed source candidates, no bulk install.
-- `tests/`: safety/negative-control, native-discovery and upstream Pi Calm tests.
-
-Keep the real checkout at `~/dotfiles`, not a disposable worktree. Home Manager
-uses `mkOutOfStoreSymlink` through `~/.dotfiles`: editing an authored file is an
-immediate live config edit after activation. Package/system changes require a
-reviewed rebuild. Colliding files are preserved with `.before-mac-foundation`;
-activation fails safely if a backup already exists.
-
-## Pi configuration
-
-Homebrew's `kunchenguid/tap/pi-launcher` owns the signed app **and its one bundled
-Pi engine**. It provides `pi-signed`; Nix provides a thin `pi` wrapper that executes
-that launcher. Do not also install Pi with npm, a shell installer or another Nix
-package. The signed app's version, hash and source are locked by the tap revision.
-
-Home Manager links only `~/.pi/agent/themes`, `extensions`, `models.json` and
-`settings.json`. Authentication, sessions, trust, caches and downloaded package
-trees are not in Git or Home Manager. Use process-scoped provider variables from
-`kc run` instead of `/login`/plaintext `auth.json`. No provider/model is selected
-or authenticated by this repository.
-
-The rose-pine-moon theme uses the public [Rosé Pine palette](https://rosepinetheme.com/palette).
-The terminal-title extension shows session/directory status. `/reload` refreshes
-local resources. The optional Calm extension is Adapted from Firstmate under its
-bundled MIT license; it is standalone with no runtime dependency on that project.
-It changes presentation, not prompts, tool execution, sessions or exports.
-
-**Compatibility:** upstream Calm targets Pi **0.82.0**, while the locked launcher
-bundles Pi **1.4.0**. It is explicitly excluded by `settings.json` on this Mac
-rather than pretending those APIs are compatible. Its original behavioral/TUI
-suite is run against disposable Pi 0.82.0 test dependencies. A one-line return-type
-annotation fixes a strict TypeScript error without changing behavior or baselines.
-The installed Pi 1.4.0 is separately tested to honor the exclusion. Porting Calm
-is optional, not a prerequisite for productive Pi use.
-
-The inherited third-party pins, `npm:pi-web-access@0.14.0` and
-`npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6`, are **not enabled**:
-`settings.json` has an empty `packages` array. Their Pi 1.4 behavior and transitive
-supply chain have not been requalified here, so they must not execute silently
-at first startup. Reintroduce an exact audited pin only if it fills a real need.
-Pi owns downloaded package runtime trees, not Home Manager; no existing trees
-are deleted. Never place third-party code in the local extensions tree.
-
-## Verification
+On a brand new Mac, from a bare clone of this repo (use your fork's URL when adapting):
 
 ```sh
-python3 tests/mac-foundation.test.py
-python3 tests/skill-discovery.test.py  # installed runtimes only; no model calls
-bash tests/axi-smoke.test.sh          # built AXI binaries + hostile TOON input
-nix flake check
+git clone https://github.com/kunchenguid/dotfiles.git
+cd dotfiles
+```
+
+Before you run it: review "Make it yours" below.
+Change the host label or CPU architecture if needed, and read the Homebrew cleanup warning.
+`bootstrap.sh` applies the config to your machine, so do this first.
+
+```sh
 ./bootstrap.sh
 ```
 
-For the unchanged upstream Calm suite's **0.82** proof target, install disposable
-local test dependencies, not another live/global Pi:
+`bootstrap.sh` does four things, in order:
+
+1. Installs Determinate Nix, if it isn't already installed.
+2. Symlinks this repo to `~/.dotfiles`.
+   This has to happen before the first build, because `home.nix` points at config files through `~/.dotfiles`.
+3. Checks the user, LocalHostName and architecture in `machine.nix` against this Mac, and offers to fix them if they differ.
+4. Runs the first `darwin-rebuild switch` (with a cleanup preview/approval if Homebrew already exists).
+   It fetches the `darwin-rebuild` tool from the nix-darwin 26.05 release branch, then applies this repo's locked flake config.
+
+After that, `darwin-rebuild` exists and you're on the normal workflow below.
+The fork also runs `scripts/verify-mac.sh` and prints owner-only Keychain/account sign-in steps.
+
+### Validate without applying
+
+Once Nix is installed (`bootstrap.sh` step 1 handles that), you can check that the config builds without touching your system - handy when you have edited something:
 
 ```sh
-TEST_ROOT=$(mktemp -d)
-npm install --prefix "$TEST_ROOT" --ignore-scripts --no-audit --no-fund \
-  @earendil-works/pi-coding-agent@0.82.0 typescript@5.9.3
-PATH="$TEST_ROOT/node_modules/.bin:$PATH" \
-  PI_CALM_TEST_PACKAGE_DIR="$TEST_ROOT/node_modules/@earendil-works/pi-coding-agent" \
-  bash tests/pi-calm.test.sh
+nix flake check
+nix build .#darwinConfigurations.mac.system --no-link
 ```
 
-Node 24 and tmux must be on PATH. Remove only that disposable directory afterward.
-The operations guide distinguishes built, discovery-tested, post-activation and
-unverified behavior. A passing mock test or `--version` is not proof of a usable
-model, browser journey, daemon or complete delivery.
+If you renamed the host label in "Make it yours", substitute your label for `mac` in these commands.
+These are the non-activating commands; `bootstrap.sh` and `rebuild.sh` really apply changes.
+
+## Daily use
+
+Edit the config files in place, then apply:
+
+```sh
+./rebuild.sh
+```
+
+That's it.
+No separate build-and-copy step.
+The fork previews Homebrew cleanup before switching and verifies afterward; see the fork additions below.
+
+## Make it yours
+
+This repo is mine.
+If you clone it, review these before you run `bootstrap.sh`:
+
+- **Identity**: run `./bootstrap.sh` (it detects your macOS username, LocalHostName and architecture and offers to set them) OR edit `user`, `localHostName` and `system` in `machine.nix`.
+  Everything else (`configuration.nix`, `home.nix`, home directory paths) is threaded from that file.
+- **Host label** `"mac"`, in three places: `flake.nix` (the `darwinConfigurations."mac"` name), `rebuild.sh` (the `#mac` at the end of the flake reference), and `bootstrap.sh`'s first-switch command (also `#mac`).
+  All three have to match. This is the logical flake label, not the Mac's LocalHostName.
+- **CPU architecture**, `system` in `machine.nix` (see Prerequisites above).
+
+**Git identity:** this config deliberately does not set your git name or email.
+Git will stop your first commit and tell you to set them (`git config --global user.name "Your Name"` and `git config --global user.email you@example.com`).
+If you'd rather manage that declaratively, add this back to `home.nix` with your own identity:
+
+```nix
+programs.git = {
+  enable = true;
+  settings.user = {
+    name = "Your Name";
+    email = "you@example.com";
+  };
+};
+```
+
+**Homebrew cleanup warning:** `configuration.nix` sets `homebrew.onActivation.cleanup = "zap"`.
+That means every time you switch, Homebrew removes any package or cask on your machine that isn't listed in the `brews` and `casks` arrays in `configuration.nix`.
+If you already have Homebrew stuff installed that isn't in that list, the first switch will uninstall it.
+Read through `brews` and `casks` before you run `bootstrap.sh` or `rebuild.sh` for the first time, and add anything you want to keep.
+
+**About `herdr`:** it's in the `brews` list.
+It's a real public Homebrew formula (`brew info herdr` finds it in homebrew-core, no tap needed), so it will install fine.
+If you don't use it, just remove it from `brews` in your copy.
+
+**Heads-up:**
+
+- `home/AGENTS.md` is my personal agent policy, and `home.nix` installs it for Claude, Codex, and opencode.
+  If you clone this repo, you'd silently inherit my agent instructions - edit or delete `home/AGENTS.md` if you don't want that.
+- The `cc` and `co` shell aliases in `home.nix` are high-agency shortcuts: `claude --dangerously-skip-permissions` and `codex --full-auto`.
+  They're convenient for me, but know what they do before you use them.
+
+## Repo tour
+
+- `flake.nix` - the entry point.
+  Wires up nixpkgs, nix-darwin, home-manager, and nix-homebrew, and declares the `mac` machine.
+- `configuration.nix` - system-level config: macOS defaults, Homebrew.
+- `home.nix` - user-level config: shell, packages, prompt, and the symlinks described below.
+- `rebuild.sh` - re-applies the config after the first switch.
+  Run this every time you make a change.
+- `home/` - the actual config files that get symlinked into place; the sections below explain the shared symlink model and Pi's narrower selective setup.
+
+## How the symlinks work
+
+The files under `home/` are the real files - editing them here is editing your live config, no rebuild needed to see the change in your editor.
+`home.nix` uses `mkOutOfStoreSymlink` to point paths like `~/.config/nvim` straight at `home/.config/nvim` in this repo, so the two never drift out of sync.
+You only run `./rebuild.sh` when you change something that isn't just a symlinked file, like a package list or a system default.
+
+## Pi configuration
+
+Upstream makes Pi optional. This fork declares the signed [Pi Launcher](https://github.com/kunchenguid/homebrew-tap) cask and a thin Nix `pi` wrapper around `pi-signed`; do not install another Pi with npm or another package manager.
+
+Home Manager owns exactly two repository-authored Pi directories: `~/.pi/agent/themes` and `~/.pi/agent/extensions`. It also links `models.json` and `settings.json` as individual files. The local extension directory is for public, repository-authored extensions only - third-party package code never belongs there. Run `/reload` after editing a local extension or other Pi resources. The terminal-title extension shows a spinner while Pi is working, then a completion mark with the session name or current directory. The `rose-pine-moon` theme was authored clean-room from the public [Rosé Pine Moon palette](https://rosepinetheme.com/palette) and Pi's [public theme schema](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json), not from a private or live theme file.
+
+### Pi Calm
+
+`home/.pi/agent/extensions/calm` is a standalone local Pi extension. Adapted from Firstmate under the bundled MIT license, Calm imports no Firstmate modules and has no Firstmate runtime dependency. Upstream targets Pi 0.82.0; **the fork excludes Calm on the launcher's Pi 1.4.0** until that API port is verified. The following describes its upstream behavior, not an enabled feature on this Mac.
+
+When enabled, Calm hides collapsed thinking and the call/result shells for Pi's seven built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`) without leaving blank transcript rows. During an active run it replaces Pi's working row with a two-line animated blue-water, yellow-boat widget. `/calm` toggles the conversation-only presentation mode (off by default) and restores Pi's stock rendering while preserving the existing Ctrl+O tool-expansion choice. Its choice is stored locally in `~/.pi/agent/calm` (or the directory selected by `PI_CODING_AGENT_DIR`), not in this repository or Home Manager.
+
+Calm never changes prompts, tool execution, model context, session data, or ordering. `/share` and `/export` use the complete stock transcript. Generic custom tools, images, and unsupported Pi transcript classes deliberately remain visible because Pi has no safe general-purpose transcript filter. If a future Pi release no longer exports the exact collapsed-thinking rendering seam, Calm logs one diagnostic and leaves only that adapter disabled; all other behavior remains available.
+
+Upstream's third-party pins are `npm:pi-web-access@0.14.0` and `npm:@ryan_nookpi/pi-extension-codex-fast-mode@0.2.6`. They are **not enabled in this fork** (`settings.json` has an empty `packages` array): Pi 1.4 behavior and transitive dependencies have not been requalified. Deliberate reintroduction requires an exact pin and security/compatibility audit. Third-party extensions execute with full user permissions and must be trusted like any other executable code. Pi owns downloaded npm package trees, outside Home Manager and Git.
+
+Home Manager deliberately does not manage `~/.pi/agent` itself, or Pi authentication, sessions, trust decisions, caches, npm/git package trees, or any other runtime state. Model overrides contain no credentials or endpoint settings. The fork retains its local provider/model preference; authenticate with your own account or process-scoped credentials from `kc run`. No account is authenticated by this configuration.
+
+## Notes
+
+The first time you launch `nvim`, it bootstraps [lazy.nvim](https://github.com/folke/lazy.nvim) by cloning plugins from GitHub.
+That needs network access once; after that it's offline.
+Neovim and WezTerm both use the rose-pine moon theme.
+Neovim keeps italics off and uses a transparent background on macOS, Windows, and WSL so it matches the terminal setup.
 
 ## License
 
-MIT No Attribution; see [LICENSE](LICENSE). Bundled Calm attribution is preserved.
+This repo is licensed under MIT No Attribution.
+See `LICENSE`.
+
+## Fork additions: rvzaku's Mac
+
+This fork keeps [Kun Chen's upstream](https://github.com/kunchenguid/dotfiles) command contract:
+**`bootstrap.sh` installs/links/personalizes/switches; `rebuild.sh` links/switches; Topgrade (`tg`) coordinates updates.**
+Use the stable `~/dotfiles` checkout, not a disposable worktree: these commands activate and repoint `~/.dotfiles`.
+
+- `machine.nix` centralizes identity. Modular package declarations, locked AXI/release packages, `kc` Keychain access and Brave (with an isolated automation profile) are additive layers.
+- Homebrew **`zap` is unchanged**. The pre-switch preview shows removals and requires interactive `y`/`Y`; noninteractive intentional removal requires `REBUILD_ALLOW_ZAP=1`. Errors cannot be overridden. Read the cask's zap stanza and back up app data first.
+- Topgrade updates the lock, checks/builds, previews cleanup, switches through `rebuild.sh`, then verifies. A failed update restores the previous lock and prints the exact recorded-generation rollback commands. Other Topgrade steps remain enabled unless they bypass declarative ownership. Review and commit a successful lock update.
+- [Mac operations, ownership, sign-ins and rollback](docs/mac-foundation.md) explains the declarations, safety gates and recovery limits.
+
+Non-activating contract checks (external commands are stubbed):
+
+```sh
+python3 tests/entrypoint-contract.test.py
+python3 tests/mac-foundation.test.py
+```

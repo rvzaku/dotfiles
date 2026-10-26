@@ -2,90 +2,16 @@
 """Black-box safety contracts at the package-manager and Keychain boundaries.
 Mocks never stand in for the real Mac build or runtime checks (run separately).
 """
-import json
 import os
-from pathlib import Path
 import pty
-import shutil
 import subprocess
-import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
+from mac_contract_fixture import MacFixture, ROOT
 
 
-class MacContracts(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="mac-contracts-")
-        self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
-        self.repo = self.base / "checkout with spaces"
-        self.repo.mkdir()
-        shutil.copytree(ROOT / "scripts", self.repo / "scripts")
-        for name in ["bootstrap.sh", "rebuild.sh"]:
-            shutil.copy2(ROOT / name, self.repo / name)
-        (self.repo / "flake.lock").write_text("previous lock\n")
-        self.bin = self.base / "bin"
-        self.bin.mkdir()
-        self.trace = self.base / "calls"
-        self.home = self.base / "home"
-        self.home.mkdir()
-        self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", HOME=str(self.home),
-                        CALLS=str(self.trace), FIXTURE_REPO=str(self.repo), TMPDIR=str(self.base))
-        self.stub("nix", '''case "$*" in
-  *system.primaryUser*) echo rvzaku ;;
-  *networking.localHostName*) echo test-mac ;;
-  *homebrew.brewfile*) printf 'brew "herdr"\\ncask "wezterm"\\n' ;;
-  'flake update'*) printf 'candidate lock\\n' > "$FIXTURE_REPO/flake.lock"; exit "${UPDATE_STATUS:-0}" ;;
-esac''')
-        self.stub("brew", '''case "$*" in
-  leaves) echo herdr ;;
-  'list --formula -1') echo herdr ;;
-  'list --cask -1') echo wezterm ;;
-  'bundle cleanup'*)
-    if [ "${PREVIEW_STATUS:-0}" != 0 ]; then echo 'Would uninstall casks: unwanted-app'; fi
-    exit "${PREVIEW_STATUS:-0}" ;;
-esac''')
-        self.stub("git", '''case "$*" in
-  *'status --porcelain') printf '%s' "${DIRTY:-}" ;;
-  *'rev-parse HEAD') echo 1111111111111111111111111111111111111111 ;;
-esac''')
-        self.stub("id", "echo rvzaku")
-        self.stub("scutil", 'echo "${TEST_HOST:-test-mac}"')
-        self.stub("uname", "echo arm64")
-        self.stub("find", 'echo /Applications/WezTerm.app')
-        self.stub("sudo", "exit 88")
-        self.stub("darwin-rebuild", "exit 89")
-
-    def stub(self, name, body):
-        target = self.bin / name
-        target.write_text('#!/bin/bash\nprintf "%s:%s\\n" "${0##*/}" "$*" >> "$CALLS"\n' + body + '\n')
-        target.chmod(0o755)
-        return target
-
-    def run_script(self, name, *args, **changes):
-        return subprocess.run(["bash", str(self.repo / name), *args], env=dict(self.env, **changes),
-                              text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
-
-    def calls(self):
-        return self.trace.read_text() if self.trace.exists() else ""
-
-    def test_bootstrap_builds_locked_tool_without_applying_or_relinking(self):
-        link = self.home / ".dotfiles"
-        link.symlink_to(self.base)
-        result = self.run_script("bootstrap.sh")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(link.resolve(), self.base.resolve())
-        self.assertIn("-- build --flake", self.calls())
-        for forbidden in ["sudo:", " switch", "ln:", "darwin-rebuild:"]:
-            self.assertNotIn(forbidden, self.calls())
-
-    def test_wrong_host_never_builds(self):
-        result = self.run_script("bootstrap.sh", TEST_HOST="another-mac")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("-- build", self.calls())
-
-    def test_activation_arguments_are_rejected(self):
+class MacContracts(MacFixture):
+    def test_extra_arguments_are_rejected_not_forwarded(self):
         for script in ["bootstrap.sh", "rebuild.sh", "scripts/update-managed.sh"]:
             self.assertNotEqual(self.run_script(script, "switch").returncode, 0)
         self.assertEqual(self.calls(), "")
@@ -100,12 +26,47 @@ esac''')
         self.assertNotIn("--force", self.calls())
         self.assertNotIn("--zap", self.calls())
 
-    def test_removal_and_preview_errors_close_approval_gate(self):
-        for status in ["1", "2"]:
-            evidence = self.base / f"preview-{status}"
-            result = self.run_script("scripts/zap-report.sh", str(evidence), PREVIEW_STATUS=status)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("unwanted-app", (evidence / "zap-diff.txt").read_text())
+    def test_removal_and_preview_errors_have_distinct_status(self):
+        for status, expected in [("1", 1), ("2", 2), ("3", 2), ("4", 2), ("5", 1)]:
+            with self.subTest(status=status):
+                evidence = self.base / f"preview-{status}"
+                result = self.run_script("scripts/zap-report.sh", str(evidence), PREVIEW_STATUS=status)
+                self.assertEqual(result.returncode, expected, result.stderr)
+
+    def test_rebuild_removal_requires_terminal_or_explicit_override(self):
+        result = self.run_script("rebuild.sh", PREVIEW_STATUS="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unwanted-app", result.stdout)
+        self.assertNotIn("sudo:", self.calls())
+        result = self.run_script("rebuild.sh", PREVIEW_STATUS="1", REBUILD_ALLOW_ZAP="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("darwin-rebuild:switch --flake", self.calls())
+
+    def test_terminal_approval_accepts_only_y_or_Y(self):
+        for answer in ["\n", "n\n", "yes\n"]:
+            self.assertNotEqual(self.run_script("rebuild.sh", PREVIEW_STATUS="1",
+                                               terminal=True, answer=answer).returncode, 0)
+        self.assertNotIn("sudo:", self.calls())
+        for answer in ["y\n", "Y\n"]:
+            self.assertEqual(self.run_script("rebuild.sh", PREVIEW_STATUS="1",
+                                            terminal=True, answer=answer).returncode, 0)
+
+    def test_preview_errors_cannot_be_overridden(self):
+        for status in ["2", "3", "4"]:
+            self.assertNotEqual(self.run_script("rebuild.sh", PREVIEW_STATUS=status,
+                                               REBUILD_ALLOW_ZAP="1").returncode, 0)
+        self.assertNotIn("sudo:", self.calls())
+
+    def test_verification_failure_after_switch_is_reported(self):
+        result = self.run_script("rebuild.sh", VERIFY_STATUS="6")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("verification FAILED", result.stderr)
+        self.assertLess(self.calls().index("darwin-rebuild:switch"), self.calls().index("verify"))
+
+    def test_failed_switch_does_not_report_success_or_verify(self):
+        result = self.run_script("rebuild.sh", SWITCH_STATUS="8")
+        self.assertEqual(result.returncode, 8)
+        self.assertNotIn("verify", self.calls())
 
     def test_evidence_in_checkout_is_rejected(self):
         result = self.run_script("scripts/zap-report.sh", str(self.repo / "evidence"))
@@ -126,17 +87,34 @@ esac''')
         self.assertNotIn("nix:", self.calls())
         self.assertEqual((self.repo / "flake.lock").read_text(), "previous lock\n")
 
-    def test_failed_update_retains_recoverable_lock_and_never_applies(self):
-        result = self.run_script("scripts/update-managed.sh", UPDATE_STATUS="9")
-        self.assertEqual(result.returncode, 9)
-        backups = list(self.base.glob("dotfiles-update.*/flake.lock.before"))
-        self.assertEqual(len(backups), 1)
-        self.assertEqual(backups[0].read_text(), "previous lock\n")
-        self.assertIn("Restore the candidate lock", result.stderr)
-        shutil.copy2(backups[0], self.repo / "flake.lock")
-        self.assertEqual((self.repo / "flake.lock").read_text(), "previous lock\n")
-        self.assertNotIn("-- build", self.calls())
-        self.assertNotIn("sudo:", self.calls())
+    def test_update_checks_builds_gates_switches_and_verifies_in_order(self):
+        result = self.run_script("scripts/update-managed.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        steps = ["status --porcelain", "rev-parse HEAD", "readlink:", "nix:flake update",
+                 "nix:flake check", "nix:build", "bundle cleanup", "darwin-rebuild:switch", "verify"]
+        self.assertEqual(sorted(calls.index(step) for step in steps), [calls.index(step) for step in steps])
+        self.assertNotIn("nix:run", calls)  # no bootstrap, release fetch or identity rewrite
+        self.assertEqual((self.repo / "flake.lock").read_text(), "candidate lock\n")
+        backups = list(self.base.glob("dotfiles-update.*/previous-head.txt"))
+        self.assertEqual(backups[0].read_text().strip(), "1" * 40)
+
+    def test_update_failure_at_each_stage_restores_lock_and_prints_exact_rollback(self):
+        stages = [dict(UPDATE_STATUS="9"), dict(CHECK_STATUS="8"), dict(BUILD_STATUS="7"),
+                  dict(PREVIEW_STATUS="1"), dict(PREVIEW_STATUS="2"),
+                  dict(SWITCH_STATUS="6"), dict(VERIFY_STATUS="5")]
+        for changes in stages:
+            with self.subTest(changes=changes):
+                self.trace.unlink(missing_ok=True)
+                result = self.run_script("scripts/update-managed.sh", **changes)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.repo / "flake.lock").read_text(), "previous lock\n")
+                self.assertIn("previous flake.lock restored", result.stderr)
+                self.assertIn("sudo nix-env --profile /nix/var/nix/profiles/system --switch-generation 7\n"
+                              "sudo /nix/var/nix/profiles/system/activate", result.stderr)
+                self.assertNotIn("nix-env:", self.calls())  # rollback is a note, not an automatic action
+                if not ({"SWITCH_STATUS", "VERIFY_STATUS"} & changes.keys()):
+                    self.assertNotIn("sudo:", self.calls())
 
     def kc(self, *args, terminal=False, **changes):
         mock = self.stub("security-fixture", '''case "$*" in
@@ -177,6 +155,7 @@ esac''')
         self.assertNotIn("-A", self.calls())
 
     def test_post_activation_check_detects_unavailable_toolchain(self):
+        (self.repo / "scripts/verify-mac.sh").write_text((ROOT / "scripts/verify-mac.sh").read_text())
         result = self.run_script("scripts/verify-mac.sh")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing executable", result.stderr)
