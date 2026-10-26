@@ -56,7 +56,8 @@
       "claude-code"
       "codex" # Preserve the installed upstream agent CLI.
       "kunchenguid/tap/pi-launcher" # Owns Pi and pi-signed; no npm Pi installation.
-      "google-chrome" # Required browser for chrome-devtools-axi.
+      "google-chrome" # Testing browser: chrome-devtools-axi and agent browser automation only.
+      "brave-browser" # Personal browsing; agents must not drive it.
     ];
   };
 }

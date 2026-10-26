@@ -38,8 +38,9 @@ for app in 'WezTerm.app' 'Pi Launcher.app' 'Google Chrome.app' 'Safari.app'; do
 done
 codesign --verify --deep --strict '/Applications/Pi Launcher.app'
 # The app identity, not merely a successful --version, must be preserved.
-codesign -dv --verbose=2 '/Applications/Pi Launcher.app' 2>&1 | grep -q 'TeamIdentifier=9T2J7MNUP9' \
-  || fail 'unexpected Pi Launcher signing identity'
+# Capture first: `grep -q` closing the pipe early makes codesign fail under pipefail.
+pi_sig=$(codesign -dv --verbose=2 '/Applications/Pi Launcher.app' 2>&1 || true)
+case "$pi_sig" in *'TeamIdentifier=9T2J7MNUP9'*) : ;; *) fail 'unexpected Pi Launcher signing identity' ;; esac
 [ -d "$HOME/Library/Fonts/HomeManager" ] || fail 'Home Manager fonts missing'
 [ "$(git config --get user.useConfigOnly)" = true ] || fail 'Git inferred-identity guard missing'
 for forge in github.com gitlab.com; do
