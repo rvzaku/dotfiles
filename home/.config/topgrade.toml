@@ -1,0 +1,8 @@
+# One owner per item: no built-in brew/nix/npm/uv/Pi/agent self-updaters.
+[misc]
+only = ["custom_commands"]
+no_self_update = true
+notify_end = "never"
+
+[commands]
+"Managed Mac candidate (build only)" = "~/.dotfiles/scripts/update-managed.sh"

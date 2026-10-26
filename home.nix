@@ -1,4 +1,4 @@
-{ config, pkgs, user, ... }:
+{ config, pkgs, user, tools, ... }:
 
 let
   dotfiles = "${config.home.homeDirectory}/.dotfiles";
@@ -16,11 +16,57 @@ in
     jq        # json on the command line
     lazygit
     neovim
+    nodejs_24 # Current supported LTS, exact patch follows flake.lock.
+    uv
+    python3 # Project Python interpreter; leave Apple's CLT Python untouched.
+    gitleaks # Secret scanner. Never scan Keychain or agent runtime state.
+    osv-scanner # Dependency scanner for project lockfiles.
+    shellcheck
+    tmux
+    tools.gh # New enough for gh-axi's attachment API (>=2.99).
+    tools.axi
+    tools.treehouse
+    tools.no-mistakes
+    tools.kc
+    (writeShellScriptBin "pi" ''
+      exec "/Applications/Pi Launcher.app/Contents/MacOS/pi-launcher" "$@"
+    '')
     # the font everything renders in
     nerd-fonts.hack
   ];
   fonts.fontconfig.enable = true;
-  home.sessionVariables.EDITOR = "nvim";
+  home.sessionPath = [ "${config.home.profileDirectory}/bin" "$HOME/.local/bin" ];
+  home.sessionVariables = {
+    EDITOR = "nvim";
+    HOMEBREW_NO_AUTO_UPDATE = "1";
+    HOMEBREW_NO_ANALYTICS = "1";
+    UV_PYTHON_DOWNLOADS = "never"; # Project dev shells/uv lockfiles own Python, not uv self-update.
+  };
+  # Adopt existing entry points, preserving collisions with the configured backup extension.
+  home.file.".local/bin/kc".source = "${tools.kc}/bin/kc";
+  home.file.".local/bin/treehouse".source = "${tools.treehouse}/bin/treehouse";
+  home.file.".local/bin/no-mistakes".source = "${tools.no-mistakes}/bin/no-mistakes";
+  home.file.".local/bin/tg" = {
+    executable = true;
+    text = ''
+      #!/bin/sh
+      exec /opt/homebrew/bin/topgrade --config "$HOME/.config/topgrade.toml" "$@"
+    '';
+  };
+
+  programs.git = {
+    enable = true;
+    settings.user.useConfigOnly = true; # Never guess a publishing identity from the Mac account.
+  };
+  programs.ssh = {
+    enable = true;
+    enableDefaultConfig = false;
+    includes = [ "~/.ssh/config.local" ]; # Private per-account aliases and key paths, not key contents.
+    matchBlocks."github.com gitlab.com" = {
+      identitiesOnly = true; # Do not spray unrelated agent keys at a forge.
+      extraOptions.StrictHostKeyChecking = "ask";
+    };
+  };
 
   programs.zsh = {
     enable = true;
@@ -28,6 +74,10 @@ in
     syntaxHighlighting.enable = true;  # commands turn green when valid
     initContent = ''
       bindkey '^f' autosuggest-accept
+      # Long-lived parents can inherit an old session-vars guard. Reassert owners
+      # on every interactive shell without retaining npm-global precedence.
+      typeset -U path
+      path=("${config.home.profileDirectory}/bin" "$HOME/.local/bin" /opt/homebrew/bin $path)
     '';
     shellAliases = {
       ".." = "cd ..";
@@ -58,6 +108,8 @@ in
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/wezterm";
   home.file.".config/nvim".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/nvim";
+  home.file.".config/topgrade.toml".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/topgrade.toml";
   home.file.".config/herdr".source =
     config.lib.file.mkOutOfStoreSymlink "${dotfiles}/home/.config/herdr";
   home.file.".claude/settings.json".source =

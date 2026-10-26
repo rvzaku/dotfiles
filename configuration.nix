@@ -1,12 +1,15 @@
-{ user, ... }:
+{ user, inputs, machine, ... }:
 
 {
   # Determinate already manages the Nix daemon, so nix-darwin shouldn't.
   nix.enable = false;
 
   nixpkgs.config.allowUnfree = true;
-  nixpkgs.hostPlatform = "aarch64-darwin"; # use x86_64-darwin for Intel CPU
+  nixpkgs.hostPlatform = machine.system;
 
+  networking.localHostName = machine.localHostName;
+  # Preserve the existing fork's attended sudo ergonomics.
+  security.pam.services.sudo_local.touchIdAuth = true;
   system.primaryUser = user;
   users.users.${user} = {
     home = "/Users/${user}";
@@ -28,18 +31,32 @@
   nix-homebrew = {
     enable = true;
     inherit user;
+    autoMigrate = true;
+    mutableTaps = false;
+    taps = {
+      "homebrew/homebrew-core" = inputs.homebrew-core;
+      "homebrew/homebrew-cask" = inputs.homebrew-cask;
+      "kunchenguid/homebrew-tap" = inputs.kun-tap;
+    };
   };
   homebrew = {
     enable = true;
     onActivation.cleanup = "zap";  # remove anything not listed here
-    onActivation.autoUpdate = true;
+    onActivation.autoUpdate = false; # Topgrade prepares reviewed flake.lock updates.
+    onActivation.upgrade = true; # Upgrade only against the locked tap definitions.
+    taps = [ "kunchenguid/tap" ];
     onActivation.extraFlags = [ "--force" ];
     brews = [
       "herdr"
+      "topgrade" # Sole update coordinator, not a second package owner.
+      "cloudflared" # Preserve existing tunnel transport; no service is enabled here.
     ];
     casks = [
       "wezterm"
       "claude-code"
+      "codex" # Preserve the installed upstream agent CLI.
+      "kunchenguid/tap/pi-launcher" # Owns Pi and pi-signed; no npm Pi installation.
+      "google-chrome" # Required browser for chrome-devtools-axi.
     ];
   };
 }

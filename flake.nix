@@ -12,25 +12,39 @@
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
     nix-homebrew.url = "github:zhaofengli/nix-homebrew";
+    # Lock formula/cask definitions as well as Nix packages. No mutable brew taps.
+    homebrew-core = { url = "github:Homebrew/homebrew-core"; flake = false; };
+    homebrew-cask = { url = "github:Homebrew/homebrew-cask"; flake = false; };
+    kun-tap = { url = "github:kunchenguid/homebrew-tap"; flake = false; };
   };
 
-  outputs = inputs@{ self, nix-darwin, nix-homebrew, home-manager, nixpkgs }:
+  outputs = inputs@{ self, nix-darwin, nix-homebrew, home-manager, nixpkgs, ... }:
     let
-      # The one username line to change if this isn't your machine.
-      # bootstrap.sh offers to rewrite this for you if your macOS username differs.
-      user = "kunchen";
+      machine = import ./machine.nix;
+      inherit (machine) user;
+      pkgs = import nixpkgs { inherit (machine) system; };
+      tools = pkgs.callPackage ./packages { };
     in
     {
+      packages.${machine.system} = {
+        inherit (tools) axi treehouse no-mistakes gh kc;
+        darwin-rebuild = nix-darwin.packages.${machine.system}.darwin-rebuild;
+      };
+      checks.${machine.system} = {
+        inherit (tools) axi treehouse no-mistakes gh kc;
+      };
       darwinConfigurations."mac" = nix-darwin.lib.darwinSystem {
-        specialArgs = { inherit user; };
+        specialArgs = { inherit user inputs machine; };
         modules = [
           ./configuration.nix
           nix-homebrew.darwinModules.nix-homebrew
           home-manager.darwinModules.home-manager
           {
+            # Preserve colliding unmanaged files for an attended, reversible migration.
+            home-manager.backupFileExtension = "before-mac-foundation";
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.extraSpecialArgs = { inherit user; };
+            home-manager.extraSpecialArgs = { inherit user tools; };
             home-manager.users.${user} = import ./home.nix;
           }
         ];
