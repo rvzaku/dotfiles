@@ -49,7 +49,9 @@ done
 [ -L "$HOME/.config/topgrade.toml" ] || fail 'Topgrade config is not Home Manager linked'
 topgrade --config "$ROOT/home/.config/topgrade.toml" --dry-run --no-self-update
 "$ROOT/scripts/zap-report.sh" "$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-verify-zap.XXXXXX")"
+python3 "$ROOT/scripts/check-skills.py"
 python3 "$ROOT/tests/skill-discovery.test.py"
+python3 "$ROOT/tests/runtime-matrix.test.py"
 # Credential checks use explicit service NAMES, never values. They run only for the
 # names the owner configures; gh keeps its own login. Unset names are reported, not faked.
 if [ -n "${KC_GITHUB_SERVICE:-}" ]; then

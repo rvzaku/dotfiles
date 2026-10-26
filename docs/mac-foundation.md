@@ -22,6 +22,16 @@ These builds and stubbed contract tests are not proof of an activated, usable Ma
 Actual activation and real rollback remain separate operator acceptance checks;
 model calls, browser journeys and supervised delivery require their own evidence.
 
+The foundation was activated by firstmate on the Mac (per the skills task brief).
+The subsequent portable-skills changes are **not activated by this worker**. A
+worker must not switch. Firstmate owns integration, attended activation, the
+shared no-mistakes daemon and native relaunch/delivery demos. No lifecycle commands
+are run here.
+A full `nix flake check`, locked nix-darwin build, actual binary smoke checks and
+native runtime skill discovery are separate from the mocked safety tests. Post-activation
+verification is `scripts/verify-mac.sh`; paid model tasks and browser interaction
+remain unverified until the actual delivery exercise.
+
 ## One owner per item
 
 | Item / purpose | Owner and declaration | Source / pin / update |
@@ -43,7 +53,7 @@ model calls, browser journeys and supervised delivery require their own evidence
 | kc | `scripts/kc.sh`, Nix wrapper, Home Manager entry-point link | Small repo-authored macOS security adapter; `kc.*` namespace and NAME=ENV syntax retained, no old secret/state copied |
 | tg | Home Manager shell entry point | Calls brew-owned Topgrade with one declarative update-and-apply step, plus non-conflicting native steps |
 | Shell/editor/terminal/agent authored config | `home.nix` selective links to `home/` | Git owns authored files; apps own caches/sessions; optional Pi compatibility exceptions in README |
-| Skills | `skills/` | Git-revisioned local contract + candidate catalog; no global or external skill install |
+| Skills | `skills/manifest.json` + `skills/home.nix` | One immutable canonical library, licensed pinned adaptations, per-skill Home Manager discovery links; [compatibility and limits](skills-compatibility.md) |
 | Firstmate | Existing `~/firstmate`, separate upstream checkout | Not owned, replaced, configured or vendored by dotfiles; its internal skills stay internal |
 
 AXI provenance was checked against npm metadata and each `kunchenguid/<tool>`
@@ -135,7 +145,8 @@ The dry run reports cask/package ownership, not every possible zap-associated pa
    state needs refreshing, open a fresh login shell and rerun verification.
 5. Add a new app config via an individual `home.file` link. Do not link entire
    credential/state directories. A skill is a separate reviewed SKILL.md directory;
-   explicit opt-in and per-runtime discovery tests precede any global link.
+   the enabled manifest controls individual discovery links. Run the admission and
+   real runtime matrix tests before approving activation; see `skills/README.md`.
 
 Git/GitHub/GitLab identity safety: `user.useConfigOnly` prevents inferred author
 identities. Set identity per project (or a private Git includeIf), not in public

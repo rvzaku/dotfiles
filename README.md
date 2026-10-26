@@ -141,6 +141,7 @@ If you don't use it, just remove it from `brews` in your copy.
 - `rebuild.sh` - re-applies the config after the first switch.
   Run this every time you make a change.
 - `home/` - the actual config files that get symlinked into place; the sections below explain the shared symlink model and Pi's narrower selective setup.
+- `skills/` - one curated portable library, explicit install manifest, native discovery adapters and runtime-neutral task handoffs; no bulk plugin packs or private supervisor skills.
 
 ## How the symlinks work
 
@@ -188,10 +189,16 @@ Use the stable `~/dotfiles` checkout, not a disposable worktree: these commands 
 - Homebrew **`zap` is unchanged**. The pre-switch preview shows removals and requires interactive `y`/`Y`; noninteractive intentional removal requires `REBUILD_ALLOW_ZAP=1`. Errors cannot be overridden. Read the cask's zap stanza and back up app data first.
 - Topgrade updates the lock, checks/builds, previews cleanup, switches through `rebuild.sh`, then verifies. A failed update restores the previous lock and prints the exact recorded-generation rollback commands. Other Topgrade steps remain enabled unless they bypass declarative ownership. Review and commit a successful lock update.
 - [Mac operations, ownership, sign-ins and rollback](docs/mac-foundation.md) explains the declarations, safety gates and recovery limits.
+- [Portable skills and add/remove examples](skills/README.md) explains the single canonical library and declarative links; [compatibility evidence](docs/skills-compatibility.md) separates real native loading, model limitations and the supervisor-owned native relaunch gate.
 
 Non-activating contract checks (external commands are stubbed):
 
 ```sh
 python3 tests/entrypoint-contract.test.py
 python3 tests/mac-foundation.test.py
+python3 scripts/check-skills.py
+python3 tests/skills.test.py
+python3 tests/handoff.test.py
+python3 tests/skill-discovery.test.py  # native Pi/Codex + Calm controls, no model calls
+python3 tests/runtime-matrix.test.py  # installed runtimes; Claude loopback expansion, no paid API
 ```

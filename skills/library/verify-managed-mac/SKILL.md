@@ -8,14 +8,18 @@ license: MIT-0
 # Verify the managed Mac
 
 This skill owns verification only, not supervision, installation or credentials.
-Resolve paths relative to this directory. The repository root is `../../..`.
-Read `../../../docs/mac-foundation.md` before running anything.
+The activated repository is `$HOME/.dotfiles` (the stable compatibility link),
+not the Nix-store discovery directory. Confirm that checkout/link before proceeding.
+Read `$HOME/.dotfiles/docs/mac-foundation.md` before running anything.
 
-1. For a candidate, run `../../../bootstrap.sh` and
-   `../../../scripts/zap-report.sh /absolute/path/outside/the/repo`.
+1. For a candidate, run `nix flake check /absolute/checkout` and
+   `nix build /absolute/checkout#darwinConfigurations.mac.system --no-link`, then
+   `/absolute/checkout/scripts/zap-report.sh /absolute/path/outside/the/repo`.
+   Never run bootstrap.sh or rebuild.sh from a worker/disposable checkout: both
+   activate and repoint the live config link.
    A nonzero preview is not approval. Report its exact removals or error.
 2. After a separately approved activation, run
-   `../../../scripts/verify-mac.sh`. It checks real commands, apps, runtime
+   `$HOME/.dotfiles/scripts/verify-mac.sh`. It checks real commands, apps, runtime
    ownership, credential access, Topgrade dry-run and skill discovery.
 3. Retain command, exit status and redacted output outside Git. Distinguish
    package build, discovery, credential access and model task execution.

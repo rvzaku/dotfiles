@@ -12,7 +12,8 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "skills/local/verify-managed-mac"
+LIBRARY = ROOT / "skills/library"
+ENABLED = {s["name"] for s in json.loads((ROOT / "skills/manifest.json").read_text())["skills"] if s["enabled"]}
 
 
 class Rpc:
@@ -62,8 +63,18 @@ class Discovery(unittest.TestCase):
         self.home.mkdir()
         (self.home / "codex").mkdir()
         (self.home / "pi").mkdir()
-        skills = self.project / ".agents/skills"
-        shutil.copytree(SKILL, skills / SKILL.name)
+        skills = self.home / ".agents/skills"
+        skills.mkdir(parents=True)
+        claude = self.home / ".claude/skills"
+        claude.mkdir(parents=True)
+        for name in ENABLED:
+            (skills / name).symlink_to(LIBRARY / name)
+            (claude / name).symlink_to(LIBRARY / name)
+        # A directory containing prose but no SKILL.md must never become a skill.
+        for directory in (skills, claude):
+            control = directory / "negative-not-a-skill"
+            control.mkdir()
+            (control / "README.md").write_text("Not an installable skill.\n")
         invalid = skills / "missing-description"
         invalid.mkdir()
         (invalid / "SKILL.md").write_text("---\nname: missing-description\n---\nNot a valid skill.\n")
@@ -73,9 +84,8 @@ class Discovery(unittest.TestCase):
         self.stderr = tempfile.TemporaryFile()
         self.addCleanup(self.stderr.close)
 
-    @unittest.skipUnless(shutil.which("pi-signed"), "pi-signed unavailable")
-    def test_pi_native_skill_discovery_and_invalid_control(self):
-        rpc = Rpc([shutil.which("pi-signed"), "--mode", "rpc", "--no-session", "--offline",
+    def pi_discovery(self, executable):
+        rpc = Rpc([shutil.which(executable), "--mode", "rpc", "--no-session", "--offline",
                    "--no-context-files", "--no-extensions", "--no-prompt-templates", "--approve"],
                   self.project, self.env, self.stderr)
         self.addCleanup(rpc.close)
@@ -83,9 +93,18 @@ class Discovery(unittest.TestCase):
         response = rpc.response("skills")
         self.assertTrue(response["success"], response)
         names = {c["name"] for c in response["data"]["commands"] if c["source"] == "skill"}
-        self.assertIn("skill:verify-managed-mac", names)
+        self.assertTrue({"skill:" + name for name in ENABLED} <= names, names)
         self.assertNotIn("skill:missing-description", names)
-        print("Pi native discovery accepted local SKILL.md and rejected missing-description control")
+        self.assertNotIn("skill:negative-not-a-skill", names)
+        print(executable + " native discovery accepted all enabled skills and rejected both controls")
+
+    @unittest.skipUnless(shutil.which("pi-signed"), "pi-signed unavailable")
+    def test_pi_native_skill_discovery_and_invalid_control(self):
+        self.pi_discovery("pi-signed")
+
+    @unittest.skipUnless(shutil.which("pi"), "pi unavailable")
+    def test_plain_pi_native_skill_discovery_and_invalid_control(self):
+        self.pi_discovery("pi")
 
     @unittest.skipUnless(shutil.which("pi-signed"), "pi-signed unavailable")
     def test_current_pi_honors_calm_opt_out(self):
@@ -122,9 +141,10 @@ class Discovery(unittest.TestCase):
         response = rpc.response(2)
         self.assertNotIn("error", response, response)
         names = {s["name"] for entry in response["result"]["data"] for s in entry["skills"]}
-        self.assertIn("verify-managed-mac", names)
+        self.assertTrue(ENABLED <= names, names)
         self.assertNotIn("missing-description", names)
-        print("Codex native discovery accepted local SKILL.md and rejected missing-description control")
+        self.assertNotIn("negative-not-a-skill", names)
+        print("Codex native discovery accepted all enabled skills and rejected both controls")
 
 
 if __name__ == "__main__":
