@@ -8,6 +8,9 @@ home/.config/herdr/*.sock
 result
 result-*
 
+# Python contract-test imports
+__pycache__/
+
 # Pi credentials and Home Manager adoption backups stay local
 /home/.pi/agent/auth.json
 /home/.pi/agent/**/*.backup

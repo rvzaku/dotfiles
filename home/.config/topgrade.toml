@@ -1,8 +1,14 @@
-# One owner per item: no built-in brew/nix/npm/uv/Pi/agent self-updaters.
+# Topgrade coordinates maintenance; declaration owners still control versions.
 [misc]
-only = ["custom_commands"]
+# These steps would bypass the locked Nix/Brew graph or Git-reviewed authored
+# configs/skills. Other built-in steps (OS/App Store, extensions, etc.) stay normal.
+disable = [
+  "brew_formula", "brew_cask", "nix", "nix_helper", "home_manager",
+  "node", "uv", "claude_code", "codex", "pi", "self_update",
+  "git_repos", "vim", "skills",
+]
 no_self_update = true
 notify_end = "never"
 
 [commands]
-"Managed Mac candidate (build only)" = "~/.dotfiles/scripts/update-managed.sh"
+"Managed Mac update (check, build, approve zap, switch, verify)" = '"$HOME/.dotfiles/scripts/update-managed.sh"'
