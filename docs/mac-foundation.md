@@ -185,3 +185,18 @@ wrong machine/link, signing identity mismatch, cleanup removals, failed native
 skill discovery or missing/unreadable kc services. It makes a read-only authenticated
 GitHub request, not a model call. Browser journeys, provider usefulness and a full
 Firstmate delivery are separate acceptance evidence after activation.
+
+## Staying current with Kun's upstream
+
+This checkout keeps three remotes: `upstream` (kunchenguid/dotfiles, read-only source), `github`
+(rvzaku/dotfiles, the published fork) and `origin` (the older GitLab fork). The personal setup lives on
+branch `mac`, which is a descendant of upstream `main`, so Kun's changes merge in cleanly.
+
+1. `git fetch upstream` and read `git log mac..upstream/main` and the diff.
+2. `git merge upstream/main` on `mac` (never rebase published history). Resolve conflicts in the
+   module that owns the file; upstream-owned files stay as upstream wrote them where possible.
+3. `nix flake check`, `./scripts/zap-report.sh /abs/outside/path` (must show only intended removals),
+   `darwin-rebuild build`, then switch and run `./scripts/verify-mac.sh`.
+4. `git push github mac`.
+Keep personal changes in small, separately named commits so a future merge stays easy to review.
+Last checked: upstream/main 9a4a638 is already contained in `mac`; a trial merge-tree was clean.
