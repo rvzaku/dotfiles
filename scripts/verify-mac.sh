@@ -50,14 +50,21 @@ done
 topgrade --config "$ROOT/home/.config/topgrade.toml" --dry-run --no-self-update
 "$ROOT/scripts/zap-report.sh" "$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-verify-zap.XXXXXX")"
 python3 "$ROOT/tests/skill-discovery.test.py"
-# These services are explicit names, never credential values. No /login or plaintext token files.
-GITHUB_SERVICE=${KC_GITHUB_SERVICE:-github}
-MODEL_SERVICE=${KC_MODEL_SERVICE:-anthropic}
-kc has "$GITHUB_SERVICE" || fail "missing Keychain item for $GITHUB_SERVICE; provision with kc set"
-kc has "$MODEL_SERVICE" || fail "missing Keychain item for $MODEL_SERVICE; provision with kc set"
-kc run "$GITHUB_SERVICE=GH_TOKEN" -- gh-axi api /user --jq .login
-# Expand only inside the credential-injected child, never the parent or argv.
-# shellcheck disable=SC2016
-kc run "$MODEL_SERVICE=ANTHROPIC_API_KEY" -- /bin/sh -c 'test -n "$ANTHROPIC_API_KEY"'
+# Credential checks use explicit service NAMES, never values. They run only for the
+# names the owner configures; gh keeps its own login. Unset names are reported, not faked.
+if [ -n "${KC_GITHUB_SERVICE:-}" ]; then
+  kc has "$KC_GITHUB_SERVICE" || fail "missing Keychain item for $KC_GITHUB_SERVICE; provision with kc set"
+  kc run "$KC_GITHUB_SERVICE=GH_TOKEN" -- gh-axi api /user --jq .login
+else
+  printf '%s\n' 'SKIP: KC_GITHUB_SERVICE unset; kc-backed GitHub token not verified (gh uses its own login).'
+fi
+if [ -n "${KC_MODEL_SERVICE:-}" ]; then
+  kc has "$KC_MODEL_SERVICE" || fail "missing Keychain item for $KC_MODEL_SERVICE; provision with kc set"
+  # Expand only inside the credential-injected child, never the parent or argv.
+  # shellcheck disable=SC2016
+  kc run "$KC_MODEL_SERVICE=ANTHROPIC_API_KEY" -- /bin/sh -c 'test -n "$ANTHROPIC_API_KEY"'
+else
+  printf '%s\n' 'SKIP: KC_MODEL_SERVICE unset; no model API key in Keychain verified.'
+fi
 printf '%s\n' 'PASS: apps, managed paths, runtimes, credential access, Topgrade dry-run and native skill discovery.'
 printf '%s\n' 'Not tested: paid model calls, browser journeys, daemon lifecycle, shared worktrees or a full supervised delivery.'
