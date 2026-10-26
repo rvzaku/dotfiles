@@ -32,6 +32,16 @@
       };
       checks.${machine.system} = {
         inherit (tools) axi treehouse no-mistakes gh kc;
+        skills = pkgs.runCommand "portable-skills-contracts" {
+          nativeBuildInputs = [ pkgs.python3 pkgs.git ];
+        } ''
+          export HOME="$TMPDIR/home"
+          mkdir -p "$HOME"
+          python3 ${self}/scripts/check-skills.py
+          python3 ${self}/tests/skills.test.py
+          python3 ${self}/tests/handoff.test.py
+          touch "$out"
+        '';
       };
       darwinConfigurations."mac" = nix-darwin.lib.darwinSystem {
         specialArgs = { inherit user inputs machine; };

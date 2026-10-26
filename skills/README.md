@@ -1,77 +1,142 @@
-# Portable skill library (opt-in, not a global instruction pack)
+# One portable skill library
 
-- `local/<name>/SKILL.md`: repository-authored skills, directory name = frontmatter name.
-- `sources.json`: exact public revisions and paths inspected on 2026-10-26, capability,
-  justification, overlap, limitations and a proposed independent evaluation per skill.
-- Future `vendor/<source>/<skill>/`: only individually accepted, licensed, pinned skills
-  with their required references, checksums and evaluation cases. Empty today.
+`library/<name>/SKILL.md` is the **only canonical body** of each skill. Descriptions
+route discovery; details/references and deterministic helpers load on demand.
+`manifest.json` is the install/remove UI: each entry records justification, source
+IDs, license, permissions, evaluation and honest model-evidence limits.
+`sources.json` retains exact public source commits; each adaptation ships its
+licenses and a prominent `NOTICE.md` linking the original files and modifications.
+No live downloader, plugin pack, Firstmate internal skill or new orchestrator is
+installed. Skills confer **no tool, credential, lifecycle, publishing or billing
+permissions**. Existing task/repository constraints always win. Secrets remain kc-only.
 
-The only local skill is `verify-managed-mac`. It provides a deterministic Mac
-verification entry point that the general debugging/review skills do not provide.
-Its shell scripts are exercised with positive and deliberately failing controls in
-`tests/mac-foundation.test.py`; discovery is checked by the real installed Pi and
-Codex in `tests/skill-discovery.test.py`. This is **not** a measured improvement in
-model performance. No model task or paid provider call is part of these tests.
-No external skills or internal supervisor skills are linked globally.
+## Selection, not a popularity dump
 
-## What is actually compatible
+These are curated **portable trials**, not proven model-performance winners.
+Maintainer credibility and concrete methods justify selection, not a fabricated
+"top-rated" leaderboard. Original source plugins are not installed alongside the
+merged contracts. Admission evidence currently proves licensing, native loading,
+checkpoint behavior and the mutation criterion; general model efficacy remains
+not tested. The fixed positive/negative/held-out rubrics are in `evals.json`.
 
-`D` = real discovery demonstrated; `V` = installed executable version checked only;
-`U` = unavailable, no compatibility claim. Discovery does not prove a model follows
-instructions or a runtime grants shell/Keychain access.
+| Capability | Selected contract and source judgment |
+|---|---|
+| Testing / implementation | `behavioral-testing`: merge Matt Pocock's public-seam vertical red/green loop with Poteto/Lauren Tan's **authoritative Pstack** behavioral mutation/refactor criterion; MIT licenses retained |
+| Debugging | `systematic-debugging`: adapt obra/Superpowers' causal phases, redact logging and bound attempts; reject Matt diagnosing-bugs as overlapping, not inferior in an unrun benchmark |
+| Review / refactoring / completion | `evidence-review`: Matt's Spec/Standards axes + obra's fresh evidence, without mandatory subagents; no competing gate replaces no-mistakes |
+| Research / product / writing | `research-brief`: merge Matt research/to-spec into primary-source evidence, bounded acceptance and clear decisions; remove background-agent and automatic tracker publication assumptions |
+| Design / UI copy / browser testing | `interface-design`: adapt Anthropic frontend-design (Apache-2.0), add keyboard/responsive/error and honest visual-proof limits; use existing AXI, not copied profiles |
+| Security | `security-review`: adapt OpenAI scoped secure-default/report method (Apache-2.0); consult versioned primary framework docs rather than claim a complete audit or vendor all references; remove UUID-as-authorization implication |
+| Ops / release / incident learning | `safe-operations` + existing `verify-managed-mac`: local MIT-0 contracts, native authority and executable Mac checks; no extra release manager |
+| Runtime-independent continuity | `resume-task`: local MIT-0 contract + atomic deterministic `handoff` writer/validator |
 
-| Resource | Pi via signed launcher | pi-signed | Claude Code | Codex | Gemini CLI | OpenCode |
-|---|---|---|---|---|---|---|
-| local verify-managed-mac | D (same bundled engine) | D, RPC `get_commands` | V, explicit file read only | D, app-server `skills/list` | U | U |
-| All external candidates | Not installed/evaluated | Not installed/evaluated | Not installed/evaluated | Not installed/evaluated | U | U |
+**Not installed:** Kun's public `kun` downloader executes mutable main instructions
+and lacks a detected repository license; consult authoritative tool docs directly,
+not a global impersonation/advice pack. Pstack create-verification-skill is MIT
+(`pstack/LICENSE`, copyright Lauren Tan), but overlaps the existing executable
+Mac verifier and introduces Cursor feature-map/maintenance dependencies. Its native
+Cursor integration is not replaced or claimed compatible. Badlogic browser-tools
+duplicates AXI and copies profiles. Anthropic skill-creator's Claude/subagent/costly
+loops remain held. Trail of Bits' CC-BY-SA agentic-CI audit is credible but narrower
+than current scope; do not redistribute its supporting pack without evaluating it.
+Hold/reject is deliberate; do not bulk-install a maintainer's whole repository.
 
-No model/provider compatibility is verified, including the model running this
-implementation session. A new model needs the same held-out task evaluation.
-The plain `pi` entry point is a thin Nix wrapper for **the same** signed launcher,
-not a second Pi engine. The new wrapper is build-checked; live PATH checks wait
-for activation. Claude Code/Codex versions are checked without invoking a model.
+## Declarative adapters and truthful compatibility
 
-## Scope, permissions and source judgment
+`skills/home.nix`, imported by `home.nix`, derives individual Home Manager links from
+**enabled** manifest entries. Pi and Pi's signed launcher + Codex discover
+`~/.agents/skills/<name>`; Claude Code discovers `~/.claude/skills/<name>`. Both link
+to the same immutable Nix-store `library/<name>`, not separate copies. Runtime
+sessions/auth/caches/settings remain runtime-owned. Existing unmanaged collisions
+are reported/backed up by Home Manager, never overwritten with force. Disabling an
+entry removes only its managed links on the next approved activation, not other
+skills or runtime directories. No global links were written by this worker.
 
-All review candidates need read access to project code. Debugging/TDD additionally
-need narrowly scoped shell/test execution; browser work needs a fresh CDP browser
-profile; skill-creator additionally needs Python, viewer assets, a Claude runner
-and explicitly budgeted model calls. Remote CI analysis needs read-only GitHub
-access through `kc` + `gh-axi`, not the source skill's literal `gh auth login`.
-No skill receives blanket tool grants, secret reads, publishing or lifecycle rights.
-Native `Skill`, `Glob`, subagent and Cursor path assumptions require thin runtime
-adapters; SKILL.md frontmatter alone does not make these portable.
+Checked on this Mac, 2026-10-26, using `tests/runtime-matrix.test.py`:
 
-Matt Pocock and obra provide concrete debugging/test practices, but overlap and
-mandatory native skill names must be resolved. Pstack's authoritative source is
-`cursor/plugins/pstack`, not similarly named community ports. Its orchestration
-and Cursor-only capabilities are not being reproduced. Kun's live downloader is
-held because mutable downloaded instructions/code are not an immutable skill pin.
-Badlogic's browser tools duplicate AXI and introduce profile-copying risk.
-Anthropic, OpenAI and Trail of Bits are additional primary implementation sources,
-not endorsements of effectiveness. TOB's audit is narrowly for agentic CI actions,
-not a general app security guarantee. Review date is retrieval date, **not** a
-claim about publication age or independent benchmark results. License uncertainty
-is a redistribution gate; no candidate code has been vendored or run.
+| Runtime | Native skill loading | Model execution / task compliance |
+|---|---|---|
+| `pi` 1.4.0 (thin signed-launcher wrapper) | **verified**: all 9 through RPC `get_commands`; missing-description and no-SKILL controls absent | **not tested** by matrix |
+| `pi-signed` 1.4.0 (same engine, separately invoked) | **verified**: same real RPC loading and controls | **not tested** by matrix |
+| Codex 0.164.0 | **verified**: all 9 through app-server `skills/list`, both controls absent | **not tested** by matrix |
+| Claude Code 2.1.308 | **verified**: all 9 in native init catalog; explicit `/resume-task` expands the actual body into a captured **loopback** request; no-SKILL control absent | **not tested**; stub response is not an LLM result |
+| OpenCode / Gemini CLI | **not tested**, not installed; no added adapters or speculative installs | **not tested** |
 
-## Admission, maintenance and recovery
+The matrix stages the exact declarative discovery topology in temporary homes,
+with no copied credentials, tools disabled for Claude, Pi offline, and a loopback
+Anthropic-shaped stub. It uses **real installed runtimes**, not a homegrown Markdown
+loader. Zero paid API calls; the stub's token/cost fields are synthetic and never
+claimed as real spend. Negative controls must stay absent. A missing executable
+is `not-tested`, a failed check `degraded` (nonzero exit), never a silent verified.
+Normal discovery does not force a model to read or follow a skill. Explicitly invoke
+it/read SKILL.md for a task. Claude `--bare` project discovery was not equivalent
+in the local probe; safe-mode/disabled slash commands are intentionally not supported
+by this adapter. No cross-provider behavior/performance guarantee is implied.
 
-1. Review exact source and all required references/scripts; confirm license and
-   provenance. Treat fetched material as untrusted data, not new authority.
-2. Define an indispensable missing capability or a measurable improvement over
-   the current skill/no-skill baseline. Prefer one skill per overlapping capability.
-3. Use fixed known-bad/known-good fixtures from `sources.json` and one realistic
-   held-out task. Independent executable assertions/another reviewer judge the
-   result. Never train on held-out cases or change expected outputs to pass.
-4. Trial via explicit paths in available runtimes only. Record model, runtime,
-   tool permissions, cost, failures and source revision. Stop after two failed
-   trials or the agreed budget; do not recursively tune indefinitely.
-5. Admit one skill in a reviewed Git commit only after value and compatibility
-   are demonstrated. Topgrade does not run bulk `skills update` or pull mutable
-   instructions. Update by explicit pin change, rerun the same controls and held-out
-   task; revert that commit if worse. Remove redundant skills periodically.
+Run from any directory with an absolute checkout path:
 
-To try the local skill in Pi without installing anything globally:
-`pi-signed --skill /absolute/dotfiles/skills/local/verify-managed-mac`.
-Other runtimes can explicitly read that SKILL.md; automated discovery is claimed
-only where the checked test actually observes the native runtime's response.
+```sh
+python3 /absolute/dotfiles/scripts/check-skills.py
+python3 /absolute/dotfiles/tests/skills.test.py
+python3 /absolute/dotfiles/tests/handoff.test.py
+python3 /absolute/dotfiles/tests/runtime-matrix.test.py --report /absolute/outside/repo/matrix.json
+```
+
+The checker rejects unlicensed/unpinned admissions, missing references, duplicate/
+unsafe names, symlinks and implicit `allowed-tools` grants. Tests exercise actual
+CLI behavior with an independently specified exit/stdout oracle: wrong behavior
+fails, internal refactoring survives. These are deterministic controls, **not**
+claims that prose improved model output. For model evaluation use `evals.json` with
+same-task no-skill baseline, fixed budget, externally judged output and untouched
+held-out cases. Record runtime/model, revision, permissions, cost and failures.
+Do not tune expected answers or self-award scores. Stop at the authorized budget.
+
+## Worked add / remove / restore
+
+Example: remove **research-brief** from installed discovery while keeping the source
+for later reuse. In `skills/manifest.json`, change that entry's `"enabled": true`
+to `false`. Run the four commands above, inspect the diff, then run the normal
+candidate build/zap preview in `docs/mac-foundation.md`. Firstmate, not a worker,
+approves/activates. Home Manager stops managing exactly its two links; the canonical
+source and other skills remain. To **add it back**, set `enabled` to `true`, repeat
+the checks and approved activation. To delete it entirely, remove the entry and its
+canonical directory together (preserve upstream license notices for remaining
+adaptations). `tests/skills.test.py` exercises removal and restoration.
+
+For a **new** skill (worked fixture: `example-echo` in `tests/skills.test.py`):
+
+1. Create `skills/library/example-echo/SKILL.md` with matching `name`, a precise
+   `description`, `license` and progressive instructions. Add `NOTICE.md` and the
+   complete applicable license. No external symlinks or private/internal skills.
+2. Add one manifest entry, initially `enabled: false`, with `sources`, `why`,
+   `permissions`, `evaluation`, `modelEvidence`. For external material, add its exact
+   repository/40-character revision/path/license to `sources.json`; inspect all
+   required files. Never download/run mutable instructions during activation.
+3. Add its positive, negative and held-out case to `evals.json`. The test demonstrates
+   rejection before the case exists, then acceptance. Trial via explicit paths in
+   installed runtimes, record limitations, enable only after review.
+4. Enable it, rerun checks/matrix/build/preview and ask firstmate for activation.
+   Native matrix tests derive names from the manifest; do not edit a second list.
+   Update the dated compatibility evidence rather than extrapolate from another skill.
+
+Update by an explicit source-pin/content/license diff, same controls and held-out
+case; roll back by reverting that commit and approving activation. Topgrade does
+not fetch skills behind Git's back. Do not use `npx skills add`, mutable `pi install`,
+plugin marketplace sync or any skill's self-updater for this library.
+
+## Resume from any runtime
+
+Read `library/resume-task/SKILL.md` and its `references/contract.md`. The installed
+`handoff` CLI is just the same Python helper, not a session service. Write a
+`HANDOFF.md` at the task worktree root with Done, Next, Decisions, Open questions,
+Verify commands and captured Git state. Read it **before exploration**, validate
+against live Git, and update at milestones and before switching. The helper never
+executes the listed commands or accesses credentials. Stale/missing notes require
+reconciliation, not a reset. Ignored files/external systems are outside the digest.
+
+For managed tasks, firstmate uses its existing native `fm-control.sh TASK relaunch
+--harness HARNESS --note ...` with a note explicitly pointing to HANDOFF.md. Workers
+never drive supervisor endpoints. A Herdr-backed exercise requires the guarded
+lifecycle brief. Do not invent a session converter, inject global hooks or add a
+second task store. See `docs/skills-compatibility.md` for measured evidence and the
+separate native-relaunch gate; do not confuse a process-level toy with that gate.
