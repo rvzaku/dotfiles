@@ -23,7 +23,7 @@ remain unverified until the actual delivery exercise.
 | nix-darwin, Home Manager, nix-homebrew | `flake.nix` | Official upstreams, exact revisions + NAR hashes in `flake.lock` |
 | Homebrew runtime and taps | nix-homebrew | Runtime from its locked input; core/cask/Kun tap sources locked, `mutableTaps = false` |
 | Herdr (visible backend), Topgrade (maintenance), cloudflared (existing transport) | Homebrew `brews` in `configuration.nix` | Homebrew core, formula/bottle hashes in locked core revision; no service enabled |
-| WezTerm, Claude Code, Codex, Google Chrome | Homebrew `casks` | Locked official cask definitions/hashes; Chrome is AXI's required browser |
+| WezTerm, Claude Code, Codex, Brave | Homebrew `casks` | Locked official cask definitions/hashes; Brave is the personal browser and, via CHROME_DEVTOOLS_AXI_EXECUTABLE_PATH with a throwaway profile, the AXI automation browser |
 | Pi / pi-signed | Homebrew `kunchenguid/tap/pi-launcher` + thin Nix `pi` wrapper | Maintainer's signed/notarized app, pinned cask hash; launcher 1.2.18 bundles Pi 1.4.0; Team 9T2J7MNUP9 |
 | Treehouse | `packages/default.nix`, Nix/Home Manager | Kun's public v3.1.6 arm64 release, SHA-256 verified against release asset metadata; no Go toolchain needed |
 | no-mistakes | Same | Kun's public v1.84.0 arm64 release + SHA-256; installation only, no init/update/daemon mutation |
@@ -54,7 +54,7 @@ need no source toolchain, and there is no current project requiring those runtim
 GitLab uses system OpenSSH and Git, not another authenticated CLI without a task.
 OpenAPI generators, mobile simulators, containers, deployment SDKs and profilers
 are project-scoped choices after the product's actual stack is known. Browser
-readiness here is Chrome + AXI, not proof of mobile/device/browser journeys.
+readiness here is Brave + AXI, not proof of mobile/device/browser journeys.
 No extra harness is installed simply to fill a compatibility matrix.
 
 ## Inventory and intended removal impact

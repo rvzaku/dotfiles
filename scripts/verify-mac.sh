@@ -33,7 +33,7 @@ claude --version
 codex --version
 [ "$(pi --version)" = "$(pi-signed --version)" ] || fail 'Pi entry points disagree'
 for tool in gh-axi chrome-devtools-axi lavish-axi quota-axi tasks-axi; do "$tool" --help >/dev/null; done
-for app in 'WezTerm.app' 'Pi Launcher.app' 'Google Chrome.app' 'Safari.app'; do
+for app in 'WezTerm.app' 'Pi Launcher.app' 'Brave Browser.app' 'Safari.app'; do
   [ -d "/Applications/$app" ] || fail "missing app: $app"
 done
 codesign --verify --deep --strict '/Applications/Pi Launcher.app'
