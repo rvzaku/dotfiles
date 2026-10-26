@@ -1,4 +1,4 @@
-{ user, inputs, machine, ... }:
+{ config, user, inputs, machine, ... }:
 
 {
   # Determinate already manages the Nix daemon, so nix-darwin shouldn't.
@@ -44,7 +44,8 @@
     onActivation.cleanup = "zap";  # remove anything not listed here
     onActivation.autoUpdate = false; # Topgrade prepares reviewed flake.lock updates.
     onActivation.upgrade = true; # Upgrade only against the locked tap definitions.
-    taps = [ "kunchenguid/tap" ];
+    # nix-homebrew owns the tap checkouts; list them so zap does not try to untap them.
+    taps = builtins.attrNames config.nix-homebrew.taps;
     onActivation.extraFlags = [ "--force" ];
     brews = [
       "herdr"
