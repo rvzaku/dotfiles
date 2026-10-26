@@ -68,6 +68,9 @@ in
     };
   };
 
+  # chrome-devtools-axi launches Brave with a throwaway profile (never the personal one).
+  home.sessionVariables.CHROME_DEVTOOLS_AXI_EXECUTABLE_PATH = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+
   programs.zsh = {
     enable = true;
     autosuggestion.enable = true;      # ghost text from history
