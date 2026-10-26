@@ -14,5 +14,7 @@
   "extensions": [
     "-extensions/calm/index.ts"
   ],
-  "packages": []
+  "packages": [],
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-6.1-sol"
 }
